@@ -31,7 +31,7 @@ export function drawHUD(ctx, game) {
   if (objective?.position) {
     let dx=(objective.position.x-player.x)*scale,dy=(objective.position.y-player.y)*scale;
     const d=Math.hypot(dx,dy),limit=radius-12;if(d>limit){dx*=limit/d;dy*=limit/d;}
-    ctx.fillStyle='#fa6d55';ctx.strokeStyle='#fff4d8';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+dx,cy+dy,6,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fa6d55';ctx.strokeStyle='#fff4d8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx+dx,cy+dy-8);ctx.lineTo(cx+dx+7,cy+dy);ctx.lineTo(cx+dx,cy+dy+8);ctx.lineTo(cx+dx-7,cy+dy);ctx.closePath();ctx.fill();ctx.stroke();
   }
   for(const unit of game.police?.units||[]){const dx=(unit.car.x-player.x)*scale,dy=(unit.car.y-player.y)*scale;ctx.fillStyle='#56c9e5';ctx.strokeStyle='#123d5b';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),4,0,Math.PI*2);ctx.fill();ctx.stroke();}
   ctx.translate(cx,cy);ctx.rotate(player.facing);if(game.vehicle){ctx.fillStyle=game.vehicle.color;ctx.fillRect(-10,-5,20,10);ctx.fillStyle='#173c49';ctx.fillRect(-3,-4,7,8);}else {ctx.fillStyle='#fff9e6';ctx.strokeStyle='#17424b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(-7,7);ctx.lineTo(-3,0);ctx.lineTo(-7,-7);ctx.closePath();ctx.fill();ctx.stroke();}ctx.restore();

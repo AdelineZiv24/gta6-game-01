@@ -1,10 +1,10 @@
-import { createCar, carBlocked } from './vehicles.js';
+import { createCar, carBlocked, emitVehicleImpact } from './vehicles.js';
 import { hasSight } from './wanted.js';
 import { angleDifference } from './random.js';
 
 export function createPolice(){return {units:[],spawnTimer:0,arrest:0,nextId:0};}
-export function spawnPolice(police,x,y,heading=0){
-  const car=createCar(x,y,heading,1,'#f2f3e7','police-driven');car.police=true;car.model={...car.model,name:'CBPD Patrol'};
+export function spawnPolice(police,x,y,heading=0,interceptor=false){
+  const car=createCar(x,y,heading,1,interceptor?'#243f50':'#f2f3e7','police-driven');car.police=true;car.interceptor=interceptor;car.model={...car.model,name:interceptor?'CBPD Interceptor':'CBPD Patrol'};
   const unit={id:++police.nextId,x,y,car,health:100,onFoot:false,down:false,lost:0,life:24,fireTimer:1,hostile:false,waypoint:null};police.units.push(unit);return unit;
 }
 function nearest(list,value,key){return list.reduce((a,b)=>Math.abs(b[key]-value)<Math.abs(a[key]-value)?b:a);}
@@ -30,7 +30,7 @@ export function updatePolice(police,game,world,camera,dt,fire){
     for(const v of world.roads.vertical)for(const h of world.roads.horizontal)candidates.push({x:v.x,y:h.y});
     const spots=candidates.filter(s=>(Math.abs(s.x-camera.x)>camera.width/2+80||Math.abs(s.y-camera.y)>camera.height/2+80)&&Math.hypot(s.x-focus.x,s.y-focus.y)<1600&&!police.units.some(u=>Math.hypot(u.x-s.x,u.y-s.y)<80));
     const spot=spots.sort((a,b)=>Math.hypot(a.x-focus.x,a.y-focus.y)-Math.hypot(b.x-focus.x,b.y-focus.y))[0];
-    if(spot)spawnPolice(police,spot.x,spot.y);
+    if(spot)spawnPolice(police,spot.x,spot.y,0,w.stars>=3&&police.units.length>=2&&!police.units.some(unit=>unit.car.interceptor));
   }
   let close=0;const bearings=[];
   for(let i=police.units.length-1;i>=0;i--){const u=police.units[i],car=u.car;
@@ -56,7 +56,7 @@ export function updatePolice(police,game,world,camera,dt,fire){
       const desired=distance<65?(game.vehicle&&w.stars>=3?160:0):145+w.stars*27;
       car.speed+=(desired-car.speed)*Math.min(1,dt*2);car.vx=Math.cos(car.heading)*car.speed;car.vy=Math.sin(car.heading)*car.speed;
       const dx=car.vx*dt,dy=car.vy*dt;
-      if(!carBlocked(world,car,car.x+dx,car.y+dy)){car.x+=dx;car.y+=dy;}else {car.speed=0;u.waypoint=null;}
+      if(!carBlocked(world,car,car.x+dx,car.y+dy)){car.x+=dx;car.y+=dy;}else {emitVehicleImpact(game.vehicleEffects,car.x+Math.cos(car.heading)*car.model.length/2,car.y+Math.sin(car.heading)*car.model.length/2,car.speed,false,car);car.speed=car.vx=car.vy=0;u.waypoint=null;}
       u.x=car.x;u.y=car.y;
     }else car.speed=car.vx=car.vy=0;
     if(sees&&u.health>0&&distance<(game.vehicle?85:34)){close++;bearings.push(Math.atan2(u.y-focus.y,u.x-focus.x));}

@@ -7,7 +7,7 @@ import { createRenderer, drawMinimapBase } from './render.js';
 import { createInput } from './input.js';
 import { createPlayer, updatePlayer, drawPlayer } from './player.js';
 import { drawHUD } from './hud.js';
-import { createCar, modelByName, setupParkedCars, updateCar, drawCar, resolveCarContacts } from './vehicles.js';
+import { createCar, modelByName, setupParkedCars, updateCar, drawCar, resolveCarContacts, createVehicleEffects, updateVehicleEffects, drawVehicleEffects } from './vehicles.js';
 import { createTraffic, updateTraffic } from './traffic.js';
 import { createPedestrians, updatePedestrians, drawPedestrian, addFleeingPedestrian } from './pedestrians.js';
 import { createMissionState, updateMissions, drawMissionWorld, failMission } from './missions.js';
@@ -16,7 +16,7 @@ import { createAudio } from './audio.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const world = createWorld(WORLD.seed);
+const world = createWorld(new URLSearchParams(location.search).get('seed') ?? WORLD.seed);
 const renderer = createRenderer(canvas);
 const input = createInput(canvas);
 const audio = createAudio();
@@ -29,7 +29,7 @@ export const game = {
   clockMinutes: 9 * 60 + 15, playSeconds: 0,
   save: loadSave(), missions: null, input,
   width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio || 1,
-  audio,
+  audio, vehicleEffects: createVehicleEffects(),
 };
 canvas.addEventListener('pointerdown',()=>{audio.unlock();if(game.missions?.dialogue)game.dialogueClick=true;});
 window.addEventListener('keydown', event => { audio.unlock(); if (event.code === 'KeyM' && !event.repeat) audio.toggleMute(); });
@@ -118,7 +118,7 @@ function startGame(foot = false, record=null) {
   game.missions.marker=game.missions.currentMission<5?world.spawnPoints.diner:null;
   if(game.missions.currentMission>=5)game.missions.objective='Story complete · Free roam in Coral Bay';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -132,7 +132,7 @@ function startGame(foot = false, record=null) {
     const taxi=createCar(road.x,game.player.y+170,Math.PI/2,5,undefined,'traffic-driven');taxi.speed=115;traffic.cars.push(taxi);
     pedestrians.people.push(...Array.from({length:5},(_,i)=>{const p={...pedestrians.people[i],x:road.x-58+i*25,y:game.player.y+105,facing:Math.PI/2,state:'walk',pause:0};return p;}));
   }
-  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<2;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+(i?20:-20),0);u.car.speed=180;}game.police.spawnTimer=5;
+  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<3;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+[-20,20,-22][i],0,i===2);u.car.speed=180;}game.police.spawnTimer=5;
     const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+190+i*75,road.y+20,0,i+1,undefined,'traffic-driven');car.speed=92;traffic.cars.push(car);}
   }
   collectCars();
@@ -183,7 +183,7 @@ function update(dt, time) {
       game.vehicle.vy = 0;
       if (game.vehicle.x > WORLD.width - 260) game.vehicle.x = world.roads.vertical[1].x;
       else game.vehicle.x += game.vehicle.speed * dt;
-    } else if(game.vehicle)updateCar(game.vehicle,input,world,dt);
+    } else if(game.vehicle)updateCar(game.vehicle,input,world,dt,game.vehicleEffects);
     else if(!game.entering)updatePlayer(game.player,input,world,dt);
     const focus=game.vehicle||game.player;
     updatePolice(game.police,game,world,renderer.camera,dt,u=>policeFire(game,world,u,allCars,pedestrians.people,reportCrime));
@@ -201,11 +201,12 @@ function update(dt, time) {
         const p=rival.waypoint;
         rival.heading=Math.atan2(p.y-rival.y,p.x-rival.x);
         rival.driver='player-driven';
-        updateCar(rival,{isDown:k=>k==='KeyW'&&Math.hypot(p.x-rival.x,p.y-rival.y)>8},world,dt);
+        updateCar(rival,{isDown:k=>k==='KeyW'&&Math.hypot(p.x-rival.x,p.y-rival.y)>8},world,dt,game.vehicleEffects);
         rival.driver='rival-driven';rival.speed=Math.min(rival.speed,145);
       }
     }
-    collectCars();const carHealth=game.vehicle?.health;resolveCarContacts(allCars,reportCrime,game.playSeconds);if(game.vehicle?.impact>45)audio.effect('collision',game.vehicle.impact/220);
+    collectCars();const carHealth=game.vehicle?.health;resolveCarContacts(allCars,reportCrime,game.playSeconds,game.vehicleEffects);if(game.vehicle?.impact>45)audio.effect('collision',game.vehicle.impact/220);
+    updateVehicleEffects(game.vehicleEffects,allCars,world,game.vehicle,dt);
     if(game.vehicle&&carHealth>game.vehicle.health)damagePlayer(game,(carHealth-game.vehicle.health)*.65);
     updatePedestrians(pedestrians,world,focus,allCars,game.recentCrimes,dt,reportCrime);
     if(game.vehicle){game.player.x=game.vehicle.x;game.player.y=game.vehicle.y;game.player.facing=game.vehicle.heading;
@@ -243,13 +244,15 @@ function frame(time) {
   accumulator += elapsed;
   while(accumulator>=STEP){update(STEP,time);accumulator-=STEP;}
   if (game.state !== 'playing') audio.update(game, elapsed);
-  renderer.camera.shake=Math.max(game.vehicle?.shake||0,game.combat.shake);
+  renderer.camera.shake=game.state==='playing'&&!shot&&!game.missions?.dialogue&&!game.missions?.completion?Math.max(game.vehicleEffects.shake,Math.min(game.vehicle?1.1:7,game.combat.shake)):0;
   renderer.draw(world, null, time, game.clockMinutes);
   // WORLD ACTORS: draw cars and pedestrians here, then Dario; HUD always comes last.
   if(game.state!=='menu' && !(game.state==='help' && helpReturn==='menu')) {
     const camera=renderer.camera;
+    drawVehicleEffects(ctx,game.vehicleEffects,camera.view());
     for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p);
     for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time);
+    drawVehicleEffects(ctx,game.vehicleEffects,camera.view(),true);
     drawOfficers(ctx,game.police);
     if(game.missions)drawMissionWorld(ctx,game.missions,game,time);
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);

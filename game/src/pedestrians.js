@@ -1,6 +1,6 @@
 import { createRandom } from './random.js';
 const random=createRandom('bay-walkers');
-const shirts=['#e8bf62','#4d9da3','#d7748c','#f3ebd7','#7584b5','#80a65d'];
+const shirts=['#e8bf62','#4d9da3','#d7748c','#f3ebd7','#7584b5','#80a65d','#bc876e','#9da8ce','#ce9f72','#75b8a3'];
 const skins=['#efc39d','#c68d66','#87583e','#d8aa7c'];
 // Sidewalk corner graph: four pavement corners per city block, joined across kerbs.
 export function createPedestrians(world,focus) {

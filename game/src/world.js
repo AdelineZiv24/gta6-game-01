@@ -139,6 +139,19 @@ export function createWorld(seed = WORLD.seed) {
   spawnPoints.pier = { x: pier.x + pier.width - 35, y: water.y - 65, heading: 0 };
   spawnPoints.player = spawnPoints.safehouse;
 
+  const dressing = createRandom(`${seed}:roof-and-beach`);
+  for (const building of buildings) {
+    const roofX = building.x + 20, roofY = building.y + 20;
+    building.rooftop = [
+      { kind: 'ac', x: roofX, y: roofY, width: 18 + Math.floor(dressing() * 9), height: 14 },
+    ];
+    if (building.storeys >= 4) building.rooftop.push({ kind: 'tank', x: building.x + building.width - 33, y: roofY + 9, radius: 10 });
+    if (dressing() > .45) building.rooftop.push({ kind: 'aerial', x: building.x + building.width * .6, y: building.y + building.height * .47 });
+    if (dressing() > .7) building.rooftop.push({ kind: 'rail', x: roofX, y: building.y + building.height - 40, width: building.width * .38 });
+  }
+  const beachColors = ['#dd795f', '#569da5', '#e7b954', '#8e91b0', '#87ab88'];
+  for (const prop of props) if (prop.kind === 'umbrella' || prop.kind === 'towel') prop.color = pick(dressing, beachColors);
+
   function pointInWater(point) { return point.y >= water.y && point.y <= WORLD.height && point.x >= 0 && point.x <= WORLD.width; }
   function collidesCircle(x, y, radius) {
     if (x - radius < 0 || y - radius < 0 || x + radius > WORLD.width || y + radius > WORLD.height) return true;

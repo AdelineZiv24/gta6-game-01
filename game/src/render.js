@@ -32,6 +32,17 @@ const asphaltSpecks = Array.from({ length: 1500 }, () => ({ x: asphaltRandom() *
 function drawWater(context, world, view, time) {
   context.fillStyle = PALETTE.water;
   context.fillRect(world.water.x, world.water.y, world.water.width, world.water.height);
+  if (world.water.y >= view.y - 10 && world.water.y <= view.y + view.height + 10) {
+    const tide = Math.sin(time * .0008) * 2;
+    context.strokeStyle = 'rgba(255,250,226,.55)'; context.lineWidth = 3;
+    context.beginPath();
+    const start = Math.max(0, Math.floor(view.x / 40) * 40);
+    for (let x = start; x <= Math.min(WORLD.width, view.x + view.width + 40); x += 40) {
+      const y = world.water.y + 3 + tide + Math.sin(x * .022 + time * .0011) * 2;
+      if (x === start) context.moveTo(x, y); else context.lineTo(x, y);
+    }
+    context.stroke();
+  }
   const minX = Math.max(0, Math.floor(view.x / 210) * 210);
   const maxX = view.x + view.width;
   const minY = Math.max(world.water.y, view.y);
@@ -108,6 +119,32 @@ function drawBuilding(context, building, night = 0) {
   for (let row = 0; row < building.windowRows; row += 1) {
     for (let col = 0; col < building.windowCols; col += 1) context.fillRect(x + padX + col * gapX + (gapX - winW) / 2, y + padY + row * gapY + (gapY - winH) / 2, winW, winH);
   }
+  for (const prop of building.rooftop || []) {
+    const { x: px, y: py } = prop;
+    if (prop.kind === 'ac') {
+      context.fillStyle = PALETTE.shadow; context.fillRect(px + 4, py + 5, prop.width, prop.height);
+      context.fillStyle = '#788888'; context.fillRect(px, py, prop.width, prop.height);
+      context.fillStyle = '#d1d5c5'; context.fillRect(px, py, prop.width, 3);
+      context.fillStyle = '#465c60';
+      for (let vent = 5; vent < prop.width - 3; vent += 4) context.fillRect(px + vent, py + 5, 2, 6);
+    } else if (prop.kind === 'tank') {
+      context.fillStyle = PALETTE.shadow; context.beginPath(); context.ellipse(px + 5, py + 6, 11, 10, 0, 0, Math.PI * 2); context.fill();
+      context.fillStyle = '#647775'; context.fillRect(px - 8, py, 16, 12);
+      context.fillStyle = '#d4d6bf'; context.beginPath(); context.ellipse(px, py, prop.radius, 7, 0, 0, Math.PI * 2); context.fill();
+      context.fillStyle = '#8faaa3'; context.fillRect(px - 5, py - 2, 10, 2);
+    } else {
+      context.strokeStyle = '#4c6464'; context.lineWidth = 1.5; context.beginPath();
+      if (prop.kind === 'aerial') {
+        context.moveTo(px + 4, py + 7); context.lineTo(px, py - 14);
+        context.moveTo(px - 10, py - 10); context.lineTo(px + 10, py - 10);
+        context.moveTo(px - 6, py - 16); context.lineTo(px + 6, py - 16);
+      } else {
+        context.moveTo(px, py); context.lineTo(px + prop.width, py);
+        for (let post = 0; post <= prop.width; post += 10) { context.moveTo(px + post, py - 3); context.lineTo(px + post, py + 4); }
+      }
+      context.stroke();
+    }
+  }
   if (building.landmark) {
     context.fillStyle = '#fff8df'; roundedRect(context, x + width / 2 - 44, y - 12, 88, 20, 3);
     context.fillStyle = '#384d4e'; context.font = `bold 9px ${FONT}`; context.textAlign = 'center'; context.textBaseline = 'middle';
@@ -140,6 +177,17 @@ function drawProp(context, prop, night = 0) {
     context.fillStyle = '#d45748'; context.fillRect(-74, -38, 148, 6);
     context.fillStyle = '#285c60'; context.font = `bold 9px ${FONT}`; context.textAlign = 'center'; context.textBaseline = 'middle';
     context.fillText(prop.slogan, 0, -17, 136);
+  } else if (prop.kind === 'umbrella') {
+    context.fillStyle = PALETTE.shadow; context.beginPath(); context.ellipse(7, 9, 23, 18, 0, 0, Math.PI * 2); context.fill();
+    for (let panel = 0; panel < 8; panel++) {
+      context.fillStyle = panel % 2 ? '#fff0cf' : prop.color;
+      context.beginPath(); context.moveTo(0, 0); context.arc(0, 0, 22, panel * Math.PI / 4, (panel + 1) * Math.PI / 4); context.closePath(); context.fill();
+    }
+    context.fillStyle = '#f7e6bd'; context.beginPath(); context.arc(0, 0, 3, 0, Math.PI * 2); context.fill();
+  } else if (prop.kind === 'towel') {
+    context.fillStyle = PALETTE.shadow; context.fillRect(-10, -17, 23, 38);
+    context.fillStyle = prop.color; context.fillRect(-12, -20, 23, 38);
+    context.fillStyle = '#f9ecd0'; context.fillRect(-12, -16, 23, 3); context.fillRect(-12, 10, 23, 3);
   } else if (prop.kind === 'shelter') {
     context.fillStyle = '#4b7777'; context.fillRect(-28, -15, 56, 4); context.fillRect(-25, -11, 3, 24); context.fillRect(22, -11, 3, 24);
     context.fillStyle = 'rgba(207,239,230,.72)'; context.fillRect(-22, -9, 44, 17);

@@ -1,4 +1,4 @@
-import { createCar } from './vehicles.js';
+import { createCar, CAR_COLORS } from './vehicles.js';
 import { createRandom, angleDifference } from './random.js';
 const random=createRandom('bay-traffic');
 // Cardinal directions clockwise in screen coordinates; right-hand lanes are +20 normal.
@@ -19,7 +19,7 @@ function spawn(world,focus) {
     const col=Math.floor(random()*(world.roads.vertical.length-1)),row=Math.floor(random()*(world.roads.horizontal.length-1));
     const d=Math.floor(random()*4),x=world.roads.vertical[col].x,y=world.roads.horizontal[row].y;
     const dist=Math.hypot(x-focus.x,y-focus.y);if(dist<350||dist>1350)continue;
-    const car=createCar(x-DY[d]*20,y+DX[d]*20,d*Math.PI/2,Math.floor(random()*6),undefined,'traffic-driven');
+    const car=createCar(x-DY[d]*20,y+DX[d]*20,d*Math.PI/2,Math.floor(random()*6),CAR_COLORS[(col*7+row*3+d)%CAR_COLORS.length],'traffic-driven');
     car.route={col,row,direction:d};next(car,world);car.speed=65+random()*35;return car;
   }return null;
 }
@@ -29,6 +29,7 @@ export function updateTraffic(traffic,world,focus,allCars,pedestrians,dt,onFlee)
   for(let i=traffic.cars.length-1;i>=0;i--){const car=traffic.cars[i];
     if(car.driver!=='traffic-driven') {traffic.cars.splice(i,1);continue;}
     if(Math.hypot(car.x-focus.x,car.y-focus.y)>1700){traffic.cars.splice(i,1);continue;}
+    if(!car.route){car.route={col:world.roads.vertical.reduce((best,road,index)=>Math.abs(road.x-car.x)<Math.abs(world.roads.vertical[best].x-car.x)?index:best,0),row:world.roads.horizontal.reduce((best,road,index)=>Math.abs(road.y-car.y)<Math.abs(world.roads.horizontal[best].y-car.y)?index:best,0),direction:((Math.round(car.heading/(Math.PI/2))%4)+4)%4};next(car,world);}
     if((car.impact>105||car.health<28)&&!car.abandoned){car.abandoned=true;car.disabled=9999;onFlee(car.x+Math.sin(car.heading)*30,car.y-Math.cos(car.heading)*30);}
     car.impact=0;
     if(car.disabled>0){car.disabled-=dt;car.speed=0;car.vx=car.vy=0;continue;}
