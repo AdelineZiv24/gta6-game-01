@@ -32,7 +32,7 @@ const {createWanted,setWanted,createEscape,updateEscape,escapeBonus}=await impor
 const {createDrift,updateDrift}=await import('../src/drift.js');
 const {GULL_COUNT,gullPosition,drawGulls}=await import('../src/gulls.js');
 const {districtTint}=await import('../src/render.js');
-const {createPedestrians,updatePedestrians,drawPedestrian}=await import('../src/pedestrians.js');
+const {createPedestrians,updatePedestrians,drawPedestrian,startlePedestrians}=await import('../src/pedestrians.js');
 const {weatherAt,weatherLabel}=await import('../src/weather.js');
 const {createRep,repLevel,repProgress,awardRep,REP_RAMPAGE_CAP}=await import('../src/rep.js');
 const {performerSpot,drawPerformer}=await import('../src/performer.js');
@@ -662,4 +662,40 @@ console.log('Street performer spot and ambient draw: PASS');
  for(let i=0;i<240;i++)updateCar(car,inputW,seeded,1/60);
  assert.equal(car.spikedT,0);assert(car.speed>100);
  console.log('B21-T6 Spiked state caps speed at 60 and expires after 6 s: PASS');
+}
+{
+ const pool=createPedestrians(seeded,{x:0,y:0});
+ const hx=seeded.roads.vertical[3].x,hy=seeded.roads.horizontal[3].y;
+ const near=pool.people[0];Object.assign(near,{x:hx+40,y:hy,state:'walk',pause:0,panic:0});
+ const far=pool.people[1];Object.assign(far,{x:hx+600,y:hy,state:'walk',pause:0,panic:0});
+ const fx=far.x,fy=far.y;
+ const count=startlePedestrians(pool,seeded,hx,hy);
+ assert(count>=1);assert(near.pause>0);
+ assert.equal(far.pause,0);assert.equal(far.x,fx);assert.equal(far.y,fy);
+ const down=pool.people[2];Object.assign(down,{x:hx+30,y:hy,state:'down',pause:0,panic:0});
+ startlePedestrians(pool,seeded,hx,hy);assert.equal(down.pause,0);
+ console.log('B22-T6 Horn startle pauses and steps aside pedestrians within 90 units only: PASS');
+}
+{
+ confirmResult=true;
+ const {game:keysGame}=await import('../src/main.js?b22-keys');
+ element('new-game').onclick();frame();
+ assert.equal(keysGame.state,'playing');
+ const mutedBefore=keysGame.audio.muted;key('KeyM');assert.equal(keysGame.audio.muted,!mutedBefore);key('KeyM');assert.equal(keysGame.audio.muted,mutedBefore);
+ key('KeyC');assert.equal(keysGame.state,'playing');
+ key('KeyH');assert.equal(keysGame.state,'help');
+ element('close-help').onclick();assert.equal(keysGame.state,'playing');
+ console.log('B22-T7 KeyM mute and KeyH help bindings intact; KeyC on foot is inert: PASS');
+}
+{
+ storage.set('coral-bay-heat-save',JSON.stringify({version:1,cash:500,completed:[0],currentMission:1,pistolGranted:false,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:0,storyElapsed:0,rep:{xp:300},photos:[0,2,4],robberyDay:-1,courierDeliveries:7,position:null,currentCar:null}));
+ const {game:pauseGame}=await import('../src/main.js?b22-pause');
+ element('continue').onclick();frame();
+ assert.equal(pauseGame.state,'playing');
+ assert.equal(pauseGame.courier.deliveries,7);assert.equal(pauseGame.photos.taken.length,3);assert.equal(pauseGame.rep.xp,300);
+ key('KeyP');assert.equal(pauseGame.state,'paused');
+ const line=element('progress').textContent;
+ assert(line.includes('Jobs 1/6'));assert(line.includes('Umbrellas'));
+ assert(line.includes('REP LV 3'));assert(line.includes('Photos 3/5'));assert(line.includes('Courier 7'));
+ console.log('B22-T8 Pause line shows REP level, photos and courier deliveries restored from the save: PASS');
 }

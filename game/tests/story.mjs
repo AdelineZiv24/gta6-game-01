@@ -15,8 +15,9 @@ import {createCourier,courierStartPoint} from '../src/courier.js';
 import {createDrift} from '../src/drift.js';
 import {createRep} from '../src/rep.js';
 import {responseRows} from '../src/hud.js';
-import {setWanted,updateEscape} from '../src/wanted.js';
+import {setWanted,updateEscape,updateWanted} from '../src/wanted.js';
 import {createSprayState,sprayGarages,updateSpray} from '../src/spray.js';
+import {createRobberyState,updateRobbery,martShops,robberyPayout,ROBBERY_TIME} from '../src/robbery.js';
 const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
@@ -289,4 +290,70 @@ function sprayFixture(cash){
  g.photos.taken.push(0);texts.length=0;drawPhotosWorld(canvas,g.photos,g,0);
  assert(texts.some(t=>t==='PHOTO TAKEN'));
  console.log('B21-T10 Photo prompt only on foot inside a ring; taken spots read PHOTO TAKEN: PASS');
+}
+
+function robberyFixture(record){
+ const g=fixture(record);g.robbery=createRobberyState(record);
+ const shop=martShops(world)[0];
+ const clerk={x:shop.x+20,y:shop.y,state:'walk',pause:0,panic:0};
+ g.people=[clerk];g.crimes=[];
+ g.report=(type,x,y,severity,violent)=>{const crime={id:g.crimes.length+1,type,x,y,severity,violent};g.crimes.push(crime);return crime;};
+ at(g,shop);return {g,shop,clerk};
+}
+function robStep(g,dt=.1){g.playSeconds+=dt;updateRobbery(g.robbery,g,g.people,g.report,dt);}
+function robComplete(g){robStep(g);for(let i=0;i<40&&g.robbery.phase==='holdup';i++)robStep(g);assert.equal(g.robbery.phase,'idle');}
+
+{
+ const shops=martShops(world);assert.equal(shops.length,1);assert.equal(shops[0].building.storefront.sign,'CORAL MART');
+ const spray=sprayGarages(world);assert.equal(spray.length,1);assert.notEqual(shops[0].building,spray[0].building);
+ for(let i=0;i<200;i++)assert(robberyPayout(()=>i/200)>=180&&robberyPayout(()=>i/200)<=320);
+ const {g,shop,clerk}=robberyFixture();g.grantPistol(48);assert.equal(g.combat.weapon,'pistol');
+ const cashBefore=g.player.cash,earnedBefore=g.missions.totalEarned;
+ robStep(g);assert.equal(g.robbery.phase,'holdup');assert.equal(g.notice,'HOLD UP…');assert(clerk.pause>0);
+ for(let i=0;i<20;i++)robStep(g);assert.equal(g.robbery.phase,'holdup');assert.equal(g.player.cash,cashBefore);
+ robComplete(g);
+ const pay=g.player.cash-cashBefore;assert(pay>=180&&pay<=320);assert.equal(g.missions.totalEarned,earnedBefore+pay);
+ assert.equal(g.crimes.length,1);assert.equal(g.crimes[0].type,'robbery');assert.equal(g.crimes[0].violent,true);assert.equal(g.crimes[0].severity,3);
+ assert(g.popups.list.some(entry=>entry.life>0&&entry.text===`ROBBERY +$${pay}`));
+ assert.equal(clerk.panic,6);assert.equal(g.robbery.lastDay,0);assert.equal(g.robbery.dirty,true);
+ console.log('B22-T1 Hold-up completes after 3 s in zone with pistol out, pays the till, reports a violent robbery: PASS');
+}
+{
+ const leave=robberyFixture();leave.g.grantPistol(48);robStep(leave.g);assert.equal(leave.g.robbery.phase,'holdup');
+ at(leave.g,{x:leave.shop.x+500,y:leave.shop.y});robStep(leave.g);
+ assert.equal(leave.g.robbery.phase,'idle');assert.equal(leave.g.crimes.length,0);assert.equal(leave.g.player.cash,180);
+ const fists=robberyFixture();fists.g.grantPistol(48);robStep(fists.g);fists.g.combat.weapon='fists';robStep(fists.g);
+ assert.equal(fists.g.robbery.phase,'idle');assert.equal(fists.g.crimes.length,0);assert.equal(fists.g.player.cash,180);
+ const busted=robberyFixture();busted.g.grantPistol(48);robStep(busted.g);busted.g.outcome={kind:'busted',bill:0};robStep(busted.g);
+ assert.equal(busted.g.robbery.phase,'idle');assert.equal(busted.g.crimes.length,0);assert.equal(busted.g.player.cash,180);
+ console.log('B22-T2 Leaving the zone, holstering to fists, or an outcome mid-hold-up aborts with no payout and no crime: PASS');
+}
+{
+ const {g}=robberyFixture();assert.equal(g.combat.weapon,'fists');
+ robStep(g);assert.equal(g.robbery.phase,'idle');assert.equal(g.notice,"THE CLERK ISN'T SCARED OF FISTS");assert.equal(g.crimes.length,0);
+ console.log('B22-T3 Fists in the zone draw the refusal notice and start nothing: PASS');
+}
+{
+ const run=robberyFixture();run.g.grantPistol(48);robComplete(run.g);
+ writeSave(run.g,run.g.missions);const saved=loadSave();assert.equal(saved.robberyDay,0);
+ const restored=robberyFixture(saved);assert.equal(restored.g.robbery.lastDay,0);restored.g.grantPistol(48);
+ const cash=restored.g.player.cash;robStep(restored.g);
+ assert.equal(restored.g.robbery.phase,'idle');assert.equal(restored.g.notice,'TILL EMPTY · COME BACK TOMORROW');assert.equal(restored.g.player.cash,cash);assert.equal(restored.g.crimes.length,0);
+ restored.g.clockMinutes=1440+555;robStep(restored.g);assert.equal(restored.g.robbery.phase,'holdup');
+ assert.equal(SAVE_VERSION,1);
+ data.set('coral-bay-heat-save',JSON.stringify({version:1,cash:50,completed:[0,1],currentMission:2}));
+ const legacy=loadSave();assert.equal(legacy.robberyDay,-1);assert.equal(createRobberyState(legacy).lastDay,-1);
+ console.log('B22-T4 One robbery per in-game day persists in the save; legacy saves default to a full till: PASS');
+}
+{
+ const {g}=robberyFixture();g.grantPistol(48);g.missions.activity='mission';
+ robStep(g);assert.equal(g.robbery.phase,'idle');assert.equal(g.crimes.length,0);assert.equal(g.notice,undefined);
+ console.log('B22-T5 Hold-up never starts during an active story mission: PASS');
+}
+{
+ const {g,clerk}=robberyFixture();g.grantPistol(48);robComplete(g);
+ assert.equal(g.crimes.length,1);
+ updateWanted(g.wanted,world,g.player,g.crimes,[clerk],[],10,.1);
+ assert.equal(g.wanted.stars,2);
+ console.log('B22-T9 A witnessed robbery raises exactly two stars through the unmodified wanted math: PASS');
 }

@@ -35,8 +35,8 @@ export function courierPayout(courier) {
   return COURIER_BASE + Math.round(COURIER_PER_SECOND * Math.max(0, courier.timeLeft));
 }
 
-export function createCourier() {
-  return { phase:'idle', target:null, targetName:'', distance:0, timeLimit:0, timeLeft:0, result:null, resultUntil:0, runs:0, rng:createRandom('coral-bay-courier') };
+export function createCourier(record = null) {
+  return { phase:'idle', target:null, targetName:'', distance:0, timeLimit:0, timeLeft:0, result:null, resultUntil:0, runs:0, deliveries: Number.isFinite(record?.courierDeliveries) ? Math.max(0, Math.floor(record.courierDeliveries)) : 0, rng:createRandom('coral-bay-courier') };
 }
 
 function pickTarget(courier, world) {
@@ -64,6 +64,7 @@ export function startCourier(courier, g) {
 
 function finishCourier(courier, g) {
   const pay = courierPayout(courier), state = g.missions, focus = g.vehicle || g.player;
+  courier.deliveries = (courier.deliveries || 0) + 1;
   courier.phase = 'done'; courier.result = 'delivered'; courier.resultUntil = (g.playSeconds || 0) + 3.5;
   g.player.cash += pay; if (state) state.totalEarned += pay;
   if (state) {

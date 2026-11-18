@@ -32,6 +32,18 @@ export function createPedestrians(world,focus) {
 }
 function makePerson(x,y){return {x,y,node:0,target:0,state:'walk',pause:random(),panic:0,facing:0,stride:0,shirt:shirts[Math.floor(random()*shirts.length)],skin:skins[Math.floor(random()*skins.length)],pants:pants[Math.floor(random()*pants.length)],complaint:0,hitCooldown:0};}
 export function addFleeingPedestrian(pool,x,y){let p=pool.people.find(p=>p.state!=='down'&&p.panic===0);if(!p)return;p.x=x;p.y=y;p.state='flee';p.panic=7;p.pause=0;let nearest=Infinity;for(let i=0;i<pool.nodes.length;i++){const n=pool.nodes[i],d=Math.hypot(n.x-x,n.y-y);if(d<nearest){nearest=d;p.target=i;p.node=i;}}}
+export function startlePedestrians(pool, world, x, y, radius = 90) {
+  let startled = 0;
+  for (const p of pool.people) {
+    if (p.state === 'down') continue;
+    const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy);
+    if (d > radius) continue;
+    startled++;
+    p.pause = Math.max(p.pause || 0, .6);
+    if (d >= 1) { const nx = p.x + dx / d * 13, ny = p.y + dy / d * 13; if (!world.collidesCircle(nx, ny, 8) && ny < world.water.y) { p.x = nx; p.y = ny; } }
+  }
+  return startled;
+}
 export function updatePedestrians(pool,world,focus,cars,crimes,dt,report) {
   for(const p of pool.people){if(p.state==='down')continue;
     if(Math.hypot(p.x-focus.x,p.y-focus.y)>1150)continue;

@@ -171,6 +171,14 @@ export function createWorld(seed = WORLD.seed) {
     if (distance < sprayDistance) { sprayDistance = distance; sprayBuilding = building; }
   }
   if (sprayBuilding) { sprayBuilding.storefront.sign = 'CORAL SPRAY'; sprayBuilding.storefront.color = '#1f8f83'; }
+  const martAnchor = { x: roads.vertical[1].x, y: roads.horizontal[1].y };
+  let martBuilding = null, martDistance = Infinity;
+  for (const building of buildings) {
+    if (!building.storefront || building === sprayBuilding) continue;
+    const distance = Math.hypot(building.x + building.width / 2 - martAnchor.x, building.y + building.height / 2 - martAnchor.y);
+    if (distance < martDistance) { martDistance = distance; martBuilding = building; }
+  }
+  if (martBuilding) { martBuilding.storefront.sign = 'CORAL MART'; martBuilding.storefront.color = '#c94f43'; }
   return { seed, buildings, props, sidewalks, roads, parkingSpots, lots, boats, spawnPoints, beach, water, pier, pointInWater, collidesCircle };
 }
 

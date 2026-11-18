@@ -169,7 +169,7 @@ export function drawHUD(ctx, game) {
     if(mode>=2)ctx.fillText('♪ RADIO OFF',w/2,h-257,486);
     else{const {station,title,artist}=stationNow(game.playSeconds,mode);ctx.fillText(`♪ ${station} · "${title}" — ${artist}`,w/2,h-257,486);}
   }
-  const message=game.entering?'Working the door…':game.noticeUntil>game.playSeconds?game.notice:game.vehicle?'W / S  Accelerate / Brake • A / D  Steer • Space  Handbrake • E  Exit • T  Radio':'E  Enter car • RMB Aim • Click / F Attack • 1 Fists / 2 Pistol';
+  const message=game.entering?'Working the door…':game.noticeUntil>game.playSeconds?game.notice:game.vehicle?'W / S  Accelerate / Brake • A / D  Steer • Space  Handbrake • E  Exit • T  Radio • C  Horn':'E  Enter car • RMB Aim • Click / F Attack • 1 Fists / 2 Pistol';
   panel(Math.max(inset,w/2-255),h-236,Math.min(510,w-2*inset),34);ctx.textAlign='center';ctx.font=`12px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText(message,w/2,h-219,Math.min(490,w-60));
   ctx.globalAlpha=1;const opacity=Math.max(0,Math.min(1,(12-game.playSeconds)/3));
   if(opacity>0&&!game.missions?.dialogue&&w>1000){ctx.globalAlpha=opacity;panel(cx+radius+18,h-68,Math.min(360,w-cx-radius-38),44);ctx.textAlign='left';ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText('WASD / Arrows  Move   •   Shift  Sprint   •   P  Pause',cx+radius+30,h-46,Math.max(0,w-cx-radius-62));}

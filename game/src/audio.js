@@ -80,6 +80,7 @@ export function createAudio() {
     if (name === 'busted') { tone(440, 0.35, 'triangle', 0.09, 180); tone(220, 0.58, 'sine', 0.07, 80); }
     if (name === 'hospital') { tone(520, 0.24, 'sine', 0.07, 620); tone(780, 0.4, 'sine', 0.06, 980); }
     if (name === 'skid') noise(0.11, 0.06 * amount, 1900);
+    if (name === 'horn') { tone(370, 0.22, 'square', 0.05); tone(466, 0.22, 'square', 0.04); }
   }
 
   function musicTick() {

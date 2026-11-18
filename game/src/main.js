@@ -10,7 +10,7 @@ import { createPlayer, updatePlayer, drawPlayer } from './player.js';
 import { drawHUD } from './hud.js';
 import { createCar, modelByName, setupParkedCars, updateCar, drawCar, headlightLevel, resolveCarContacts, createVehicleEffects, updateVehicleEffects, drawVehicleEffects } from './vehicles.js';
 import { createTraffic, updateTraffic } from './traffic.js';
-import { createPedestrians, updatePedestrians, drawPedestrian, addFleeingPedestrian } from './pedestrians.js';
+import { createPedestrians, updatePedestrians, drawPedestrian, addFleeingPedestrian, startlePedestrians } from './pedestrians.js';
 import { createMissionState, updateMissions, drawMissionWorld, failMission } from './missions.js';
 import { loadSave, writeSave, hasSave } from './save.js';
 import { createAudio } from './audio.js';
@@ -24,12 +24,13 @@ import { createCourier, updateCourier, drawCourierWorld } from './courier.js';
 import { createDrift, updateDrift } from './drift.js';
 import { createBus, updateBus, stageBusAtShelter } from './bus.js';
 import { updateStunt, drawStuntWorld } from './stunt.js';
-import { createRep } from './rep.js';
+import { createRep, repProgress } from './rep.js';
 import { createRadio, cycleRadio } from './radio.js';
 import { drawPerformer } from './performer.js';
 import { drawGulls } from './gulls.js';
 import { weatherAt, drawRain } from './weather.js';
 import { createPhotos, updatePhotos, drawPhotosWorld } from './photos.js';
+import { createRobberyState, updateRobbery, drawRobberyWorld } from './robbery.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -54,7 +55,7 @@ export const game = {
   fishing: createFishing(),
   courier: createCourier(),
   drift: createDrift(),
-  photos: createPhotos(),
+  photos: createPhotos(), robbery: createRobberyState(),
   rep: createRep(),
   radio: createRadio(),
 };
@@ -130,7 +131,7 @@ function respawn(){
 window.addEventListener('keydown',event=>{if(game.outcome&&!event.repeat){event.preventDefault();respawn();}});
 let helpReturn = 'menu';
 function setState(state) {
-  if(state==='paused'&&game.missions){game.save=writeSave(game,game.missions);document.getElementById('progress').textContent=`Jobs ${game.missions.completed.length}/6 · Umbrellas ${game.missions.collectibles.length}/12 · Taxi fares ${game.missions.taxiFares} · Total earned $${game.missions.totalEarned.toLocaleString()} · Best ${Object.entries(game.missions.bestTimes).map(([k,v])=>`${k}: ${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,'0')}`).join(', ')||'none'}`;}
+  if(state==='paused'&&game.missions){game.save=writeSave(game,game.missions);document.getElementById('progress').textContent=`Jobs ${game.missions.completed.length}/6 · Umbrellas ${game.missions.collectibles.length}/12 · Taxi fares ${game.missions.taxiFares} · Total earned $${game.missions.totalEarned.toLocaleString()} · Best ${Object.entries(game.missions.bestTimes).map(([k,v])=>`${k}: ${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,'0')}`).join(', ')||'none'} · REP LV ${repProgress(game.rep?.xp??0).level} · Photos ${game.photos?game.photos.taken.length:0}/5 · Courier ${game.courier?.deliveries??0}`;}
   game.state = state;
   for (const [id, mode] of [['menu','menu'],['pause','paused'],['help','help']]) document.getElementById(id).hidden = state !== mode;
   document.getElementById('status').textContent = state === 'playing' ? 'Explore Coral Bay as Dario Venn.' : `${state} screen`;
@@ -151,7 +152,7 @@ function startGame(foot = false, record=null) {
   if(game.missions.currentMission>=6||game.missions.completed.includes(5))game.missions.objective='Story complete · Free roam in Coral Bay';
   else if(game.missions.currentMission===5)game.missions.objective='Meet Lena at the Marlin Diner · One last job';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.escape=createEscape();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.courier=createCourier();game.drift=createDrift();game.photos=createPhotos(record);game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
+  game.wanted=createWanted();game.escape=createEscape();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.courier=createCourier(record);game.drift=createDrift();game.photos=createPhotos(record);game.robbery=createRobberyState(record);game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -294,6 +295,7 @@ function update(dt, time) {
     if(game.fishing)updateFishing(game.fishing,game,dt,input);
     if(game.courier)updateCourier(game.courier,game,dt);
     if(game.photos){updatePhotos(game.photos,game,dt,input);if(game.photos.dirty){game.save=writeSave(game,game.missions);game.photos.dirty=false;}}
+    if(game.robbery){updateRobbery(game.robbery,game,pedestrians.people,reportCrime,dt);if(game.robbery.dirty){game.save=writeSave(game,game.missions);game.robbery.dirty=false;}}
     updateStunt(game,dt);
     updateDrift(game.drift,game,dt,input);
     game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase' && shot !== 'cover') game.clockMinutes += dt;
@@ -321,6 +323,7 @@ function frame(time) {
   } else if(!game.outcome&&input.wasPressed('KeyH') && game.state!=='help') openHelp();
   if(game.state==='playing'&&input.wasPressed('KeyE')&&!game.missions?.dialogue&&!game.missions?.completion&&!(game.missions?.phase==='courier'&&!game.vehicle&&Math.hypot(game.player.x-game.missions.courier.x,game.player.y-game.missions.courier.y)<55)&&!(!game.vehicle&&!game.missions?.activity&&Math.hypot(game.player.x-world.spawnPoints.diner.x,game.player.y-world.spawnPoints.diner.y)<90))game.interactionRequested=true;
   if(game.state==='playing'&&game.vehicle&&input.wasPressed('KeyT'))cycleRadio(game.radio);
+  if(game.state==='playing'&&game.vehicle&&input.wasPressed('KeyC')){game.audio?.effect('horn');startlePedestrians(pedestrians,world,game.vehicle.x,game.vehicle.y);}
   accumulator += elapsed;
   while(accumulator>=STEP){update(STEP,time);accumulator-=STEP;}
   if (game.state !== 'playing') audio.update(game, elapsed);
@@ -345,6 +348,7 @@ function frame(time) {
     if(game.race)drawRaceWorld(ctx,game.race,game,time);
     drawFuelWorld(ctx,game,time);
     drawSprayWorld(ctx,game,time);
+    if(game.robbery)drawRobberyWorld(ctx,game.robbery,game,time);
     if(game.rampage)drawRampageWorld(ctx,game.rampage,game,time);
     if(game.fishing)drawFishingWorld(ctx,game.fishing,game,time);
     if(game.courier)drawCourierWorld(ctx,game.courier,game,time);
