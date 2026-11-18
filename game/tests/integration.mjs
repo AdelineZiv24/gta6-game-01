@@ -18,6 +18,8 @@ const {createWorld}=await import('../src/world.js');
 const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar}=await import('../src/vehicles.js');
 const {createPolice,spawnPolice,updatePolice}=await import('../src/police.js');
 const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
+const {createRace,buildRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
+const {districtTint}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians}=await import('../src/pedestrians.js');
 const seeded=createWorld('1'),again=createWorld('1');
 assert.equal(JSON.stringify(seeded),JSON.stringify(again));
@@ -101,6 +103,45 @@ assert.equal(radioNow(24*RADIO_TRACKS.length).index,radioNow(0).index);
 assert(RADIO_TRACKS.length>=5&&RADIO_TRACKS.every(track=>track.title.trim()&&track.artist.trim()));
 console.log('Five-star helicopter lifecycle, response rows, Coral FM rotation: PASS');
 
+{
+ const start=raceStartPoint(seeded),route=buildRoute(seeded);
+ assert.equal(route.length,5);assert.deepEqual(route[4],start);
+ for(const point of route){assert(seeded.roads.vertical.some(road=>road.x===point.x));assert(seeded.roads.horizontal.some(road=>road.y===point.y));}
+ function raceFixture(){
+  const rg={world:seeded,player:{...playerCar},vehicle:null,parkedCars:[],missions:{activity:null,totalEarned:0,splash:null},popups:createPopups(),playSeconds:0,vehicleEffects:createVehicleEffects(),outcome:null};
+  rg.vehicle=createCar(start.x,start.y,0,3,undefined,'player-driven');Object.assign(rg.player,start);return rg;
+ }
+ {
+  const race=createRace(),rg=raceFixture();
+  assert.equal(startRace(race,rg),true);assert.equal(race.phase,'running');assert.equal(rg.missions.activity,'race');assert(rg.parkedCars.includes(race.rival));assert.equal(race.position,1);
+  Object.assign(rg.vehicle,race.checkpoints[0]);updateRace(race,rg,1/60);
+  assert.equal(race.playerNext,1);assert(rg.popups.list.some(entry=>entry.life>0&&entry.text==='CHECKPOINT 1/5'));assert.equal(racePosition(race,rg),1);
+ }
+ {
+  const race=createRace(),rg=raceFixture();startRace(race,rg);
+  const rival=race.rival,target=race.checkpoints[0],distance=Math.hypot(rival.x-target.x,rival.y-target.y);
+  for(let frame=0;frame<90;frame++)updateRace(race,rg,1/60);
+  assert(Math.hypot(rival.x-target.x,rival.y-target.y)<distance);assert(!seeded.collidesCircle(rival.x,rival.y,10));
+  const building=seeded.buildings[0],centre={x:building.x+building.width/2,y:building.y+building.height/2};
+  Object.assign(rival,centre);race.anchor={...centre};race.stuckT=0;
+  for(let frame=0;frame<5;frame++)updateRace(race,rg,1.1);
+  assert(Math.hypot(rival.x-centre.x,rival.y-centre.y)>0);assert(!seeded.collidesCircle(rival.x,rival.y,10));
+ }
+ {
+  const race=createRace(),rg=raceFixture();startRace(race,rg);race.playerNext=4;Object.assign(rg.vehicle,race.checkpoints[4]);
+  const cash=rg.player.cash;updateRace(race,rg,1/60);
+  assert.equal(race.phase,'done');assert.equal(race.result,'win');assert.equal(rg.player.cash,cash+RACE_PRIZE);assert.equal(rg.missions.splash?.name,'STREET RACE');assert.equal(rg.missions.activity,null);assert.equal(race.rival.driver,'parked');
+ }
+ {
+  const race=createRace(),rg=raceFixture();startRace(race,rg);const rival=race.rival;rg.outcome={kind:'busted'};updateRace(race,rg,1/60);
+  assert.equal(race.phase,'idle');assert(!rg.parkedCars.includes(rival));
+ }
+ const downtown={x:(seeded.roads.vertical[3].x+seeded.roads.vertical[4].x)/2,y:(seeded.roads.horizontal[2].y+seeded.roads.horizontal[3].y)/2};
+ const downtownTint=districtTint(downtown.x,downtown.y,seeded),docksTint=districtTint(seeded.pier.x-100,seeded.roads.horizontal[6].y+100,seeded),residentialTint=districtTint(500,400,seeded);
+ assert.equal(districtTint(downtown.x,downtown.y,seeded),downtownTint);assert.notEqual(downtownTint,null);assert.notEqual(docksTint,null);assert.notEqual(docksTint,downtownTint);assert.equal(districtTint(2000,3150,seeded),null);assert.notEqual(residentialTint,null);assert.notEqual(residentialTint,downtownTint);
+}
+console.log('Street race lifecycle, rival nudge, district tints: PASS');
+
 const {updateTraffic}=await import('../src/traffic.js');
 const stagedCar=createCar(1000,lane,0,1,undefined,'traffic-driven');stagedCar.speed=92;
 updateTraffic({cars:[stagedCar],timer:1},seeded,playerCar,[stagedCar],[],1/60,()=>{});
@@ -114,8 +155,9 @@ for(const scene of ['start','mission','foot','chase','cover']){
  assert.equal(staged.state,scene==='start'?'menu':'playing');
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
- if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);}
+ if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);assert(staged.race);assert.equal(staged.race.phase,'running');assert(staged.race.rival);assert.equal(staged.race.checkpoints.length,5);assert.equal(staged.race.position,2);}
  if(scene==='cover'){
+  assert.equal(staged.race.phase,'idle');
   assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS ×3');assert.equal(staged.vehicleEffects.nearChain,3);assert(staged.popups.list.some(entry=>entry.life>0&&entry.text==='NEAR MISS ×3'));assert(staged.vehicleEffects.markCursor>0);
   assert(staged.police.heli);assert([staged.police.heli.x,staged.police.heli.y].every(Number.isFinite));
   assert.equal(staged.combat.weapon,'pistol');assert.equal(staged.combat.ammo,12);assert.equal(staged.combat.reserve,36);

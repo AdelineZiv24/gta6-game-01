@@ -8,11 +8,12 @@ import {createWanted} from '../src/wanted.js';
 import {writeSave,loadSave} from '../src/save.js';
 import {drawHUD} from '../src/hud.js';
 import {createPopups} from '../src/popups.js';
+import {createRace,raceStartPoint} from '../src/race.js';
 const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
 const input={wasPressed:k=>key===k,isDown:()=>false};
-function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
+function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
 function tick(g,k=null,dt=.1){key=k;updateMissions(g.missions,g,dt,input,g.cars,{});key=null;}
 function at(g,p,car=false){if(car){g.vehicle??=createCar(p.x,p.y,0,0,'#777','player-driven');Object.assign(g.vehicle,{x:p.x,y:p.y});}else g.vehicle=null;Object.assign(g.player,{x:p.x,y:p.y});}
 function talk(g){let n=10;while(g.missions.dialogue&&n--)tick(g,'KeyE');assert(n>0);}
@@ -33,6 +34,15 @@ chain.missions.collectibles=[1,3];writeSave(chain,chain.missions);const record=l
 for(const p of [world.spawnPoints.pier,world.spawnPoints.diner,world.spawnPoints.garage,a.missions.taxiStart,a.missions.taxiTarget]){assert(!world.collidesCircle(p.x,p.y,12));assert(p.y+30<world.water.y);}
 const ctx=new Proxy({measureText:t=>({width:t.length*7})},{get:(o,k)=>k in o?o[k]:(...args)=>{},set:(o,k,v)=>(o[k]=v,true)});Object.assign(chain,{width:1280,height:800,pixelRatio:1,minimap:{},objective:{text:'test'},vehicle:null});ctx.textAlign='center';drawHUD(ctx,chain);drawMissionWorld(ctx,chain.missions,chain,0);
 console.log('Activities, replay, save round trip, shot isolation, marker geometry, stub canvas: PASS');
+
+{
+ const g=fixture({currentMission:5,completed:[0,1,2,3,4]});at(g,raceStartPoint(world),true);tick(g,'Digit4');
+ assert.equal(g.missions.activity,'race');assert.equal(g.race.phase,'running');assert(g.cars.some(car=>car.driver==='rival-driven'));
+ const elapsed=g.missions.elapsed;tick(g);assert.equal(g.missions.activity,'race');assert.equal(g.missions.elapsed,elapsed);
+ const foot=fixture({currentMission:5,completed:[0,1,2,3,4]});at(foot,raceStartPoint(world));tick(foot,'Digit4');
+ assert.equal(foot.missions.activity,null);assert.equal(foot.race.phase,'idle');
+}
+console.log('Street race car requirement, start input and activity guard: PASS');
 
 for(const i of [1,3,4]){const g=fixture({currentMission:i});begin(g);const s=g.missions;if(i===1){tick(g);g.vehicle=s.convertible;tick(g);s.targetCar.health=0;}if(i===3)s.van.health=0;if(i===4){tick(g);at(g,world.spawnPoints.diner,true);tick(g);talk(g);s.lenaCar.health=0;}tick(g);assert(s.retry);talk(g);begin(g);assert.equal(s.activity,'mission');}
 const restored=fixture(record);assert.deepEqual(restored.missions.bestTimes,record.bestTimes);assert.deepEqual(restored.missions.collectibles,record.collectibles);

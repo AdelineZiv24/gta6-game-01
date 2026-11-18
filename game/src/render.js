@@ -239,12 +239,28 @@ function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
   }
 }
 
+export function districtTint(x,y,world) {
+  if(y>=world.beach.y)return null;
+  if(x>world.pier.x-620&&y>world.roads.horizontal[world.roads.horizontal.length-1].y-40)return 'rgba(110,165,205,0.30)';
+  const midX=(world.roads.vertical[3].x+world.roads.vertical[4].x)/2,midY=(world.roads.horizontal[2].y+world.roads.horizontal[3].y)/2;
+  if(Math.abs(x-midX)<560&&Math.abs(y-midY)<500)return 'rgba(245,200,95,0.30)';
+  if(y>world.roads.horizontal[world.roads.horizontal.length-1].y-460)return 'rgba(250,220,150,0.32)';
+  return ((Math.floor(x/482)+Math.floor(y/422))%2)?'rgba(255,255,255,0.10)':'rgba(46,110,60,0.14)';
+}
+
 export function drawMinimapBase(canvas, world) {
   const context = canvas.getContext('2d');
   const sx = canvas.width / WORLD.width;
   const sy = canvas.height / WORLD.height;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = PALETTE.grass; context.fillRect(0, 0, canvas.width, canvas.height);
+  for(let column=0;column<world.roads.vertical.length-1;column++)for(let row=0;row<world.roads.horizontal.length;row++){
+    const left=world.roads.vertical[column],right=world.roads.vertical[column+1],top=world.roads.horizontal[row],bottom=world.roads.horizontal[row+1];
+    const x0=left.x+left.width/2,x1=right.x-right.width/2,y0=top.y+top.width/2,y1=bottom?bottom.y-bottom.width/2:world.beach.y;
+    if(x1<=x0||y1<=y0)continue;
+    const tint=districtTint((x0+x1)/2,(y0+y1)/2,world);
+    if(tint){context.fillStyle=tint;context.fillRect(x0*sx,y0*sy,(x1-x0)*sx,(y1-y0)*sy);}
+  }
   context.fillStyle = PALETTE.water; context.fillRect(0, world.water.y * sy, canvas.width, canvas.height - world.water.y * sy);
   context.fillStyle = PALETTE.sand; context.fillRect(0, world.beach.y * sy, canvas.width, world.beach.height * sy);
   context.fillStyle = PALETTE.road;

@@ -100,6 +100,12 @@ export function drawHUD(ctx, game) {
     ctx.font=`bold 10px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText(wanted.stars?(wanted.seen?'CBPD • IN SIGHT':'CBPD • SEARCHING'):'CORAL BAY POLICE DEPARTMENT',w-34,wy+47);
     if(wanted.stars&&!wanted.seen){ctx.fillStyle='#ffffff28';ctx.fillRect(w-214,wy+61,180,5);ctx.fillStyle='#71d3d9';ctx.fillRect(w-214,wy+61,180*wanted.evade,5);}
   }
+  const race=game.race;
+  if(race&&(race.phase==='running'||race.phase==='done')){
+    const ry=(w<1000?190:104)+84;panel(w-230,ry,210,52);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 11px ${FONT}`;ctx.fillText('STREET RACE',w-34,ry+14);
+    ctx.fillStyle='#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(race.phase==='done'?(race.result==='win'?'YOU WIN':'OUTRUN'):`${Math.floor(race.elapsed/60)}:${String(Math.floor(race.elapsed%60)).padStart(2,'0')}.${Math.floor(race.elapsed*10)%10}`,w-34,ry+32);
+    ctx.font=`bold 11px ${FONT}`;ctx.fillText(`CP ${Math.min(race.playerNext+1,race.checkpoints.length)}/${race.checkpoints.length} · POS ${race.position}/2`,w-34,ry+47);
+  }
   if(game.police?.arrest>0){panel(w/2-130,h*.32,260,54);ctx.textAlign='center';ctx.fillStyle='#ff9d8d';ctx.font=`bold 18px ${FONT}`;ctx.fillText('BUSTED',w/2,h*.32+18);ctx.fillStyle='#ffffff33';ctx.fillRect(w/2-114,h*.32+35,228,8);ctx.fillStyle='#ef826c';ctx.fillRect(w/2-114,h*.32+35,228*game.police.arrest,8);}
   const combat=game.combat;
   if(combat){

@@ -14,6 +14,7 @@ import { createMissionState, updateMissions, drawMissionWorld, failMission } fro
 import { loadSave, writeSave, hasSave } from './save.js';
 import { createAudio } from './audio.js';
 import { createPopups, updatePopups, drawPopups, spawnPopup } from './popups.js';
+import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -31,7 +32,7 @@ export const game = {
   clockMinutes: 9 * 60 + 15, playSeconds: 0,
   save: loadSave(), missions: null, input,
   width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio || 1,
-  audio, vehicleEffects: createVehicleEffects(), popups: createPopups(),
+  audio, vehicleEffects: createVehicleEffects(), popups: createPopups(), race: createRace(),
 };
 canvas.addEventListener('pointerdown',()=>{audio.unlock();if(game.missions?.dialogue)game.dialogueClick=true;});
 window.addEventListener('keydown', event => { audio.unlock(); if (event.code === 'KeyM' && !event.repeat) audio.toggleMute(); });
@@ -55,6 +56,7 @@ function collectCars() {
   for(const unit of game.police.units)allCars.push(unit.car);
   if(game.vehicle && !allCars.includes(game.vehicle)) allCars.push(game.vehicle);
   if(game.missions?.rival&&!allCars.includes(game.missions.rival))allCars.push(game.missions.rival);
+  if(game.race?.rival&&!allCars.includes(game.race.rival))allCars.push(game.race.rival);
 }
 function freeExit(car) {
   let best=null,bestDistance=Infinity;
@@ -121,7 +123,7 @@ function startGame(foot = false, record=null) {
   game.missions.marker=game.missions.currentMission<5?world.spawnPoints.diner:null;
   if(game.missions.currentMission>=5)game.missions.objective='Story complete · Free roam in Coral Bay';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -137,6 +139,7 @@ function startGame(foot = false, record=null) {
   }
   if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<3;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+[-20,20,-22][i],0,i===2);u.car.speed=180;}game.police.spawnTimer=5;
     const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+[430,610][i],road.y+20,0,i+1,undefined,'traffic-driven');car.speed=[125,115][i];traffic.cars.push(car);}
+    stageRaceShot(game.race,game);
   }
   if(shot==='cover'){
     setWanted(game.wanted,5,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;
@@ -149,9 +152,8 @@ function startGame(foot = false, record=null) {
     game.police.spawnTimer=5;
     const road=world.roads.horizontal[3];
     for(let index=0;index<3;index++){
-      const adjacent=index===1;
-      const car=createCar(game.vehicle.x+[480,300,660][index],road.y+(adjacent?-20:20),0,index+1,undefined,'traffic-driven');
-      car.speed=[115,125,105][index];traffic.cars.push(car);
+      const car=createCar(game.vehicle.x+[560,880,1240][index],road.y+[20,-20,20][index],0,index+1,undefined,'traffic-driven');
+      car.speed=[150,138,152][index];traffic.cars.push(car);
     }
     pedestrians.people.push(...Array.from({length:6},(_,index)=>{
       const source=pedestrians.people[index];
@@ -251,6 +253,7 @@ function update(dt, time) {
     if(game.missions&&!game.outcome){const before=game.missions.completed.length,faresBefore=game.missions.taxiFares,itemsBefore=game.missions.collectibles.length,dialogueBefore=game.missions.dialogue?.index;updateMissions(game.missions,game,dt,missionInput,parked,traffic);missionKeysConsumed=true;if(game.missions.dialogue?.index!==dialogueBefore)audio.effect('dialogue');if(game.missions.completed.length>before||game.missions.taxiFares>faresBefore||game.missions.collectibles.length>itemsBefore){audio.effect(game.missions.taxiFares>faresBefore?'cash':'pickup');game.save=writeSave(game,game.missions);}game.objective={text:game.missions.objective,position:game.missions.marker};}
     if(game.player.health<=0)finishOutcome('wasted');else if(game.police.arrest>=1)finishOutcome('busted');
     if(game.recentCrimes.length>96){const floor=game.wanted.lastId-32;game.recentCrimes=game.recentCrimes.filter(c=>c.id>floor);}
+    if(game.race)updateRace(game.race,game,dt);
     game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase' && shot !== 'cover') game.clockMinutes += dt;
     audio.update(game, dt);
     const car=game.vehicle,look=car?car.speed*.3:0;
@@ -288,6 +291,7 @@ function frame(time) {
     drawOfficers(ctx,game.police);
     drawHeli(ctx,game.police,time);
     if(game.missions)drawMissionWorld(ctx,game.missions,game,time);
+    if(game.race)drawRaceWorld(ctx,game.race,game,time);
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);
     drawCombat(ctx,game);
     drawPopups(ctx,game.popups);

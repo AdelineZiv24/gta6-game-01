@@ -3,6 +3,7 @@ import { MODELS, createCar } from './vehicles.js';
 import { setWanted } from './wanted.js';
 import { writeSave } from './save.js';
 import { spawnPopup } from './popups.js';
+import { startRace, raceStartPoint } from './race.js';
 
 export const MISSIONS = [
   { id:'first-shift', name:'First Shift', reward:ECONOMY.firstShift, time:240 },
@@ -88,6 +89,7 @@ export function updateMissions(s,g,dt,input,parked,traffic){
   g.interacting=input.wasPressed('KeyE');
   if(!s.activity){updateActivities(s,g,dt,input,parked,traffic);return;}
   if(s.activity==='mission'&&(g.player.health<=0||g.police?.arrest>=1)){failMission(s,g.player.health<=0?'You were wasted.':'You were busted.');return;}
+  if(s.activity==='race')return;
   if(s.activity==='taxi'){updateActivities(s,g,dt,input,parked,traffic);return;}
   if(s.phase!=='start')activeStep(s,g,dt,parked);
 }
@@ -98,6 +100,7 @@ function updateActivities(s,g,dt,input,parked,traffic){
   }
   if(near(g,g.world.spawnPoints.garage,80)){s.objective='Marlin Auto Works · 1 repair';}
   if(!g.vehicle&&near(g,diner(g),75)){s.objective=s.currentMission>=5?'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay':'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay';}
+  const raceStart=raceStartPoint(g.world);if(near(g,raceStart,95)){s.objective=g.vehicle?'Beach Road · 4 STREET RACE':'Beach Road · STREET RACE — bring a car, press 4';if(g.vehicle&&input.wasPressed('Digit4')&&g.race)startRace(g.race,g);}
   if(near(g,g.world.spawnPoints.garage,80)&&g.vehicle&&input.wasPressed('Digit1')&&g.player.cash>=ECONOMY.repair){g.player.cash-=ECONOMY.repair;g.vehicle.health=100;s.objective='Vehicle repaired';}
   else if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit2')&&g.player.cash>=ECONOMY.armour){g.player.cash-=ECONOMY.armour;g.player.armour=100;s.objective='Armour refilled';}
   if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit1'))startTaxi(s,g);
