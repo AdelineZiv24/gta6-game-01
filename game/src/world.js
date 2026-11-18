@@ -1,124 +1,149 @@
-// The game's rules and state, with no drawing and no browser in it: the player's paddle, the
-// pool of falling blocks and coins, spawning, collisions, score, lives and level. step() advances
-// one fixed step and returns what happened as bit flags, so the caller can react without the
-// world knowing about screens or sound. Nothing here allocates after createWorld returns.
-import { BLOCK, COIN, FIELD, LEVEL, LIVES, PLAYER, POOL_SIZE } from './config.js';
+import { CITY, PALETTE, WORLD } from './config.js';
+import { createRandom, pick, randomInt, randomRange } from './random.js';
 
-export const KIND_BLOCK = 0;
-export const KIND_COIN = 1;
+const LANDMARKS = [
+  { id: 'hospital', name: 'Coral Bay General', short: 'CB GENERAL', gx: 1, gy: 1, color: PALETTE.hospital, w: 170, h: 130 },
+  { id: 'police', name: 'Coral Bay Police', short: 'POLICE', gx: 6, gy: 1, color: PALETTE.police, w: 170, h: 132 },
+  { id: 'diner', name: 'Marlin Diner', short: 'MARLIN DINER', gx: 2, gy: 4, color: PALETTE.diner, w: 150, h: 110 },
+  { id: 'garage', name: 'Marlin Auto Works', short: 'MARLIN AUTO', gx: 6, gy: 4, color: PALETTE.garage, w: 170, h: 112 },
+  { id: 'safehouse', name: 'Seabreeze Apartments', short: 'SEABREEZE', gx: 4, gy: 5, color: PALETTE.safehouse, w: 180, h: 144 },
+];
 
-export const EVENT_HIT = 1;
-export const EVENT_COIN = 2;
-export const EVENT_OVER = 4;
-
-function overlaps(a, b) {
+function intersects(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-export function createWorld(random) {
-  const player = { x: 0, y: FIELD.groundY - PLAYER.height, width: PLAYER.width, height: PLAYER.height, invulnerable: 0 };
-  const items = [];
-  for (let index = 0; index < POOL_SIZE; index += 1) {
-    items.push({ active: false, kind: KIND_BLOCK, x: 0, y: 0, width: 0, height: 0, speed: 0 });
-  }
-  const state = { player, items, score: 0, lives: LIVES, level: 1, elapsed: 0, blockTimer: 0, coinTimer: 0 };
-
-  function reset() {
-    player.x = (FIELD.width - player.width) / 2;
-    player.invulnerable = 0;
-    for (const item of items) item.active = false;
-    state.score = 0;
-    state.lives = LIVES;
-    state.level = 1;
-    state.elapsed = 0;
-    state.blockTimer = BLOCK.interval;
-    state.coinTimer = COIN.interval;
-  }
-
-  function freeItem() {
-    for (let index = 0; index < items.length; index += 1) if (!items[index].active) return items[index];
-    return null;
-  }
-
-  function spawnBlock() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_BLOCK;
-    item.width = BLOCK.minWidth + random() * (BLOCK.maxWidth - BLOCK.minWidth);
-    item.height = BLOCK.height;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = BLOCK.speed + BLOCK.speedPerLevel * (state.level - 1) + random() * BLOCK.speedJitter;
-  }
-
-  function spawnCoin() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_COIN;
-    item.width = COIN.size;
-    item.height = COIN.size;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = COIN.speed + COIN.speedPerLevel * (state.level - 1);
-  }
-
-  function blockInterval() {
-    return Math.max(BLOCK.minInterval, BLOCK.interval * BLOCK.intervalScale ** (state.level - 1));
-  }
-
-  /**
-   * One fixed step. `direction` is -1, 0 or 1 (left, still, right). With `harmless` set (the title
-   * screen's backdrop) things fall but nothing touches the player and nothing scores.
-   */
-  function step(dt, direction, harmless) {
-    let events = 0;
-    state.elapsed += dt;
-    state.level = Math.min(LEVEL.max, 1 + Math.floor(state.elapsed / LEVEL.seconds));
-
-    player.x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * dt));
-    if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
-
-    state.blockTimer -= dt;
-    if (state.blockTimer <= 0) {
-      spawnBlock();
-      state.blockTimer += blockInterval();
-    }
-    state.coinTimer -= dt;
-    if (state.coinTimer <= 0) {
-      spawnCoin();
-      state.coinTimer += COIN.interval + random() * COIN.intervalJitter;
-    }
-
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      item.y += item.speed * dt;
-      if (item.y > FIELD.groundY) {
-        item.active = false;
-        if (item.kind === KIND_BLOCK && !harmless) state.score += BLOCK.dodgePoints;
-        continue;
-      }
-      if (harmless || !overlaps(item, player)) continue;
-      if (item.kind === KIND_COIN) {
-        item.active = false;
-        state.score += COIN.points;
-        events |= EVENT_COIN;
-      } else if (player.invulnerable === 0) {
-        item.active = false;
-        state.lives -= 1;
-        player.invulnerable = PLAYER.invulnerable;
-        events |= EVENT_HIT;
-        if (state.lives === 0) {
-          events |= EVENT_OVER;
-          break;
-        }
-      }
-    }
-    return events;
-  }
-
-  reset();
-  return { state, reset, step };
+function pointInRect(point, rect) {
+  return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
 }
+
+export function createWorld(seed = WORLD.seed) {
+  const random = createRandom(seed);
+  const buildings = [];
+  const props = [];
+  const sidewalks = [];
+  const parkingSpots = [];
+  const lots = [];
+  const boats = [];
+  const spawnPoints = {};
+  const roads = { horizontal: [], vertical: [] };
+  const blockStartX = CITY.marginX + CITY.roadWidth;
+  const blockStartY = CITY.marginY + CITY.roadWidth;
+  const pitchX = CITY.blockWidth + CITY.roadWidth;
+  const pitchY = CITY.blockHeight + CITY.roadWidth;
+  const cols = Math.floor((WORLD.width - CITY.marginX * 2 - CITY.roadWidth) / pitchX);
+  const rows = Math.floor((CITY.beachStartY - CITY.marginY - CITY.roadWidth) / pitchY);
+
+  for (let index = 0; index <= cols; index += 1) {
+    const x = CITY.marginX + CITY.roadWidth / 2 + index * pitchX;
+    roads.vertical.push({ x, y: 0, length: CITY.beachStartY, width: CITY.roadWidth });
+  }
+  for (let index = 0; index <= rows; index += 1) {
+    const y = CITY.marginY + CITY.roadWidth / 2 + index * pitchY;
+    roads.horizontal.push({ x: 0, y, length: WORLD.width, width: CITY.roadWidth });
+  }
+
+  function addBuilding(building) {
+    const item = {
+      id: building.id ?? `building-${buildings.length}`, name: building.name ?? '', short: building.short ?? '',
+      x: building.x, y: building.y, width: building.width, height: building.height,
+      storeys: building.storeys ?? randomInt(random, 1, 5),
+      facade: building.facade ?? pick(random, PALETTE.building),
+      roof: building.roof ?? pick(random, PALETTE.roof),
+      windowRows: building.windowRows ?? randomInt(random, 2, 5),
+      windowCols: building.windowCols ?? randomInt(random, 3, 7),
+      windowPattern: Array.from({ length: (building.windowRows ?? 3) * (building.windowCols ?? 4) }, () => random() > .18),
+      landmark: Boolean(building.landmark),
+    };
+    buildings.push(item);
+    return item;
+  }
+
+  for (let gy = 0; gy < rows; gy += 1) {
+    for (let gx = 0; gx < cols; gx += 1) {
+      const cell = { x: blockStartX + gx * pitchX, y: blockStartY + gy * pitchY, width: CITY.blockWidth, height: CITY.blockHeight };
+      const landmark = LANDMARKS.find((item) => item.gx === gx && item.gy === gy);
+      if (landmark) {
+        const building = addBuilding({ ...landmark, x: cell.x + (cell.width - landmark.w) / 2, y: cell.y + (cell.height - landmark.h) / 2, width: landmark.w, height: landmark.h, storeys: landmark.id === 'safehouse' ? 5 : 2, facade: landmark.color, landmark: true });
+        spawnPoints[landmark.id] = { x: building.x + building.width / 2, y: building.y + building.height + 28, heading: -Math.PI / 2 };
+      }
+      const inner = CITY.buildingInset + CITY.sidewalk;
+      const left = cell.x + inner;
+      const top = cell.y + inner;
+      const areaW = cell.width - inner * 2;
+      const areaH = cell.height - inner * 2;
+      const isLot = !landmark && (gx + gy * 3) % 11 === 4;
+      const isPark = gx === 4 && gy === 2;
+      const count = landmark ? 1 : isLot || isPark ? 0 : randomInt(random, 4, 6);
+      if (isLot) {
+        lots.push({ x: cell.x + 35, y: cell.y + 45, width: cell.width - 70, height: cell.height - 90 });
+        for (let bay = 0; bay < 8; bay++) parkingSpots.push({ x: cell.x + 72 + (bay % 4) * 62, y: cell.y + 102 + Math.floor(bay / 4) * 105, heading: Math.PI / 2, width: 30, length: 54, lot: true });
+      }
+      if (isPark) {
+        props.push({ kind: 'fountain', x: cell.x + cell.width / 2, y: cell.y + cell.height / 2, scale: 1, rotation: 0 });
+        props.push({ kind: 'path', x: cell.x + cell.width / 2, y: cell.y + 45, width: 18, height: cell.height - 90, rotation: 0 });
+        props.push({ kind: 'path', x: cell.x + 45, y: cell.y + cell.height / 2, width: cell.width - 90, height: 18, rotation: 0 });
+        for (let p = 0; p < 6; p++) props.push({ kind: 'palm', x: cell.x + 60 + (p % 3) * 130, y: cell.y + 66 + Math.floor(p / 3) * 190, scale: .9, rotation: 0 });
+      }
+      for (let index = 0; index < count; index += 1) {
+        const width = randomRange(random, 112, Math.min(182, areaW - 12));
+        const height = randomRange(random, 90, Math.min(154, areaH - 12));
+        const columns = count <= 2 ? 1 : 2;
+        const slot = index % columns;
+        const row = Math.floor(index / columns);
+        const x = left + (areaW / columns) * slot + (areaW / columns - width) / 2;
+        const y = top + (areaH / Math.ceil(count / columns)) * row + (areaH / Math.ceil(count / columns) - height) / 2;
+        if (landmark && index === 0) continue;
+        addBuilding({ x, y, width, height });
+      }
+      const sidewalk = { x: cell.x + CITY.buildingInset, y: cell.y + CITY.buildingInset, width: cell.width - CITY.buildingInset * 2, height: cell.height - CITY.buildingInset * 2 };
+      const pavement = CITY.sidewalk;
+      sidewalks.push(
+        { x: cell.x + 8, y: cell.y + 8, width: cell.width - 16, height: pavement },
+        { x: cell.x + 8, y: cell.y + cell.height - pavement - 8, width: cell.width - 16, height: pavement },
+        { x: cell.x + 8, y: cell.y + 8 + pavement, width: pavement, height: cell.height - 16 - pavement * 2 },
+        { x: cell.x + cell.width - pavement - 8, y: cell.y + 8 + pavement, width: pavement, height: cell.height - 16 - pavement * 2 },
+      );
+      const propKinds = ['palm', 'lamp', 'bench', 'hydrant'];
+      for (let index = 0; index < 6; index += 1) {
+        const edge = index % 4;
+        const along = randomRange(random, 0.12, 0.88);
+        const point = edge === 0 ? { x: sidewalk.x + sidewalk.width * along, y: sidewalk.y }
+          : edge === 1 ? { x: sidewalk.x + sidewalk.width, y: sidewalk.y + sidewalk.height * along }
+            : edge === 2 ? { x: sidewalk.x + sidewalk.width * along, y: sidewalk.y + sidewalk.height }
+              : { x: sidewalk.x, y: sidewalk.y + sidewalk.height * along };
+        props.push({ kind: pick(random, propKinds), x: point.x, y: point.y, scale: randomRange(random, 0.8, 1.2), rotation: randomRange(random, 0, Math.PI * 2) });
+      }
+      for (let index = 0; index < 3; index += 1) {
+        const x = cell.x + 42 + index * ((cell.width - 84) / 2);
+        props.push({ kind: 'lamp', x, y: cell.y + 22, scale: 0.85, rotation: 0 });
+      }
+      const kerbY = cell.y - 15;
+      for (let spot = 0; spot < 4; spot += 1) parkingSpots.push({ x: cell.x + 65 + spot * 72, y: kerbY, heading: 0, width: 30, length: 54 });
+    }
+  }
+
+  const beach = { x: 0, y: CITY.beachStartY, width: WORLD.width, height: CITY.waterStartY - CITY.beachStartY };
+  const water = { x: 0, y: CITY.waterStartY, width: WORLD.width, height: WORLD.height - CITY.waterStartY };
+  const pier = { x: WORLD.width - 500, y: CITY.waterStartY - 24, width: 400, height: 220 };
+  for (let index = 0; index < 9; index += 1) props.push({ kind: 'palm', x: 70 + index * 430, y: CITY.beachStartY + 55 + (index % 2) * 38, scale: 1.2, rotation: 0 });
+  for (let index = 0; index < 24; index += 1) props.push({ kind: index % 2 ? 'towel' : 'umbrella', x: 130 + index * 168, y: CITY.beachStartY + 110 + (index % 4) * 34, scale: .8 + random() * .3, rotation: randomRange(random, -.4, .4) });
+  for (let index = 0; index < 7; index += 1) boats.push({ x: WORLD.width - 390 + (index % 3) * 105, y: CITY.waterStartY + 72 + Math.floor(index / 3) * 58, heading: index % 2 ? .12 : -.1, length: 42 + index % 3 * 12 });
+  spawnPoints.pier = { x: pier.x + pier.width - 35, y: water.y - 65, heading: 0 };
+  spawnPoints.player = spawnPoints.safehouse;
+
+  function pointInWater(point) { return point.y >= water.y && point.y <= WORLD.height && point.x >= 0 && point.x <= WORLD.width; }
+  function collidesCircle(x, y, radius) {
+    if (x - radius < 0 || y - radius < 0 || x + radius > WORLD.width || y + radius > WORLD.height) return true;
+    return buildings.some((building) => {
+      const nearestX = Math.max(building.x, Math.min(x, building.x + building.width));
+      const nearestY = Math.max(building.y, Math.min(y, building.y + building.height));
+      const dx = x - nearestX;
+      const dy = y - nearestY;
+      return dx * dx + dy * dy < radius * radius;
+    });
+  }
+  return { seed, buildings, props, sidewalks, roads, parkingSpots, lots, boats, spawnPoints, beach, water, pier, pointInWater, collidesCircle };
+}
+
+export const worldGeometry = { intersects, pointInRect };

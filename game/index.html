@@ -1,19 +1,21 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
-<style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-</style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CORAL BAY HEAT</title><link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game" aria-label="Coral Bay Heat open-world game"></canvas>
+<main id="menu" class="screen">
+<section class="panel"><p class="eyebrow">A city of sunshine. A living in the shadows.</p>
+<h1>CORAL BAY <span>HEAT</span></h1>
+<p class="intro">Courier Dario Venn arrives in Coral Bay with a light bag and a heavy debt. Fixer Lena Marsh has work waiting at the Marlin Diner. In this town, every delivery comes with a price.</p>
+<div class="actions"><button id="new-game">New Game <span>↗</span></button><button id="continue" disabled>Continue</button><button id="menu-help" class="secondary">How to play</button></div>
+<div class="controls"><b>WASD / Arrow keys</b> Move <b>Shift</b> Sprint <b>E</b> Enter / Exit <b>Space</b> Handbrake <b>Esc / P</b> Pause <b>H</b> Help</div>
+<p class="footnote">CORAL BAY • FREE ROAM • CHAPTER 01</p></section>
+</main>
+<section id="pause" class="screen" hidden><div class="panel compact"><p class="eyebrow">Take a breath</p><h2>ON COASTAL TIME</h2><p id="progress">The city will wait for you.</p><div class="actions"><button id="resume">Resume</button><button id="pause-help" class="secondary">How to play</button><button id="quit" class="secondary">Main menu</button></div></div></section>
+<section id="help" class="screen" hidden><div class="panel compact"><p class="eyebrow">Know your way around</p><h2>STREET SMARTS</h2><dl><dt>WASD / Arrow keys</dt><dd>Walk / drive (W accelerates, S brakes and reverses)</dd><dt>E</dt><dd>Talk / collect an envelope / enter a nearby car / exit at low speed</dd><dt>Diner activities</dt><dd>1 taxi dispatch · 2 armour ($220) · 3 payphone replay of the last completed job</dd><dt>Garage</dt><dd>1 repairs your current car ($260)</dd><dt>Space</dt><dd>Handbrake while driving</dd><dt>Hold Shift</dt><dd>Sprint</dd><dt>Esc / P</dt><dd>Pause or resume</dd><dt>Mouse / Combat</dt><dd>Hold right mouse to aim fists; pistol always aims at pointer. Left click attacks; F punches. 1 fists / 2 pistol (when granted). R reloads.</dd><dt>Wanted</dt><dd>Witnesses report crime. Break police sight to fill the evade meter. Escape arrest range before BUSTED fills.</dd><dt>H</dt><dd>Open this guide</dd></dl><p>Yellow on the map marks your destination. Buildings block your path; the beach is walkable, deep water is not.</p><button id="close-help">Back</button></div></section>
+<p id="status" class="sr-only" role="status" aria-live="polite"></p>
 <script type="module" src="./src/main.js"></script>
-</body>
-</html>
+</body></html>
