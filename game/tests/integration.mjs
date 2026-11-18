@@ -16,9 +16,11 @@ const before=writes;location.search='?shot=mission';const shot=await import('../
 
 const {createWorld}=await import('../src/world.js');
 const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar}=await import('../src/vehicles.js');
-const {createPolice,spawnPolice,updatePolice}=await import('../src/police.js');
+const {createPolice,spawnPolice,spawnHeli,updatePolice}=await import('../src/police.js');
 const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
 const {createRace,buildRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
+const {createFuelState,updateFuel,gasStations}=await import('../src/fuel.js');
+const {createRampage,startRampage,updateRampage,rampageStartPoint,rampagePayout,RAMPAGE_TIME}=await import('../src/rampage.js');
 const {districtTint}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians}=await import('../src/pedestrians.js');
 const seeded=createWorld('1'),again=createWorld('1');
@@ -32,6 +34,43 @@ const testRenderer=createRenderer({width:1280,height:800,getContext:()=>ctx});
 for(const time of [0,1000,3000])testRenderer.draw(seeded,null,time,555);
 assert.equal(geometry,JSON.stringify({buildings:seeded.buildings,parkingSpots:seeded.parkingSpots}));
 const lane=seeded.roads.horizontal[2].y+20;
+assert.equal(createCar(0,0).fuel,100);
+const drainCar=createCar(300,lane,0,1,undefined,'player-driven');
+for(let frame=0;frame<600;frame++)updateCar(drainCar,{isDown:key=>key==='KeyW'},seeded,1/60);
+assert(drainCar.fuel<98&&drainCar.fuel>93);
+const parkedCar=createCar(300,lane,0,1);parkedCar.speed=200;
+updateCar(parkedCar,{isDown:()=>true},seeded,1/60);assert.equal(parkedCar.fuel,100);
+const limpCar=createCar(300,lane,0,1,undefined,'player-driven');limpCar.fuel=0;
+for(let frame=0;frame<180;frame++)updateCar(limpCar,{isDown:key=>key==='KeyW'},seeded,1/60);
+assert(limpCar.speed<=40.5&&limpCar.speed>20);assert.equal(limpCar.fuel,0);
+
+const stations=gasStations(seeded);assert.equal(stations.length,3);
+for(const station of stations){
+ assert(seeded.roads.vertical.some(road=>road.x===station.x));
+ assert(seeded.roads.horizontal.some(road=>road.y===station.y));
+ assert(!seeded.collidesCircle(station.x,station.y,12));
+}
+function fuelFixture(cash){
+ const g={world:seeded,player:{cash},vehicle:createCar(stations[0].x,stations[0].y,0,1,undefined,'player-driven'),popups:createPopups(),fuel:createFuelState(),playSeconds:0};
+ g.vehicle.fuel=30;g.vehicle.speed=0;return g;
+}
+const fuelGame=fuelFixture(100);
+for(let tick=0;tick<25;tick++)updateFuel(fuelGame,.1);
+assert.equal(fuelGame.vehicle.fuel,100);assert.equal(fuelGame.fuel.refilling,false);
+assert(fuelGame.player.cash<100&&fuelGame.player.cash>=92);
+assert(fuelGame.popups.list.some(entry=>entry.life>0&&entry.text.startsWith('REFUELLED')&&entry.text.includes('-$')));
+const freeFuel=fuelFixture(0);
+for(let tick=0;tick<25;tick++)updateFuel(freeFuel,.1);
+assert.equal(freeFuel.vehicle.fuel,100);assert.equal(freeFuel.player.cash,0);
+assert(freeFuel.popups.list.some(entry=>entry.life>0&&entry.text.includes('FREE')));
+const noRefill=fuelFixture(100);noRefill.vehicle.speed=50;
+for(let tick=0;tick<5;tick++)updateFuel(noRefill,.1);
+assert.equal(noRefill.vehicle.fuel,30);
+noRefill.vehicle.speed=0;noRefill.vehicle.x+=500;
+for(let tick=0;tick<5;tick++)updateFuel(noRefill,.1);
+assert.equal(noRefill.vehicle.fuel,30);
+console.log('Fuel drain, limp mode, station locations and refills: PASS');
+
 const effects=createVehicleEffects(),car=createCar(1000,lane,0,1,undefined,'traffic-driven');
 car.speed=180;updateVehicleEffects(effects,[car],seeded,null,1/60);
 car.x+=2;car.speed=140;updateVehicleEffects(effects,[car],seeded,null,1/60);
@@ -103,6 +142,16 @@ assert.equal(radioNow(24*RADIO_TRACKS.length).index,radioNow(0).index);
 assert(RADIO_TRACKS.length>=5&&RADIO_TRACKS.every(track=>track.title.trim()&&track.artist.trim()));
 console.log('Five-star helicopter lifecycle, response rows, Coral FM rotation: PASS');
 
+const csPolice=createPolice();
+spawnPolice(csPolice,200,lane);spawnPolice(csPolice,300,lane);spawnPolice(csPolice,400,lane,0,true);
+const csGame={police:csPolice,wanted:{stars:3,seen:true},player:playerCar,vehicle:playerCar};
+const csRows=responseRows(csGame);
+assert(csRows.some(row=>row.callsign==='CB-01'));assert(csRows.some(row=>row.callsign==='CB-02'));assert(csRows.some(row=>row.callsign==='INT-3'));
+assert.deepEqual(responseRows(csGame).map(row=>row.callsign),csRows.map(row=>row.callsign));
+spawnHeli(csPolice,500,lane);
+assert.equal(responseRows(csGame).find(row=>row.type==='HELI')?.callsign,'AIR-1');
+console.log('Stable ground and air callsigns: PASS');
+
 {
  const start=raceStartPoint(seeded),route=buildRoute(seeded);
  assert.equal(route.length,5);assert.deepEqual(route[4],start);
@@ -110,6 +159,10 @@ console.log('Five-star helicopter lifecycle, response rows, Coral FM rotation: P
  function raceFixture(){
   const rg={world:seeded,player:{...playerCar},vehicle:null,parkedCars:[],missions:{activity:null,totalEarned:0,splash:null},popups:createPopups(),playSeconds:0,vehicleEffects:createVehicleEffects(),outcome:null};
   rg.vehicle=createCar(start.x,start.y,0,3,undefined,'player-driven');Object.assign(rg.player,start);return rg;
+ }
+ {
+  const race=createRace(),rg=raceFixture();rg.player.cash=0;rg.vehicle.fuel=5;
+  assert.equal(startRace(race,rg),true);assert.equal(rg.vehicle.fuel,40);
  }
  {
   const race=createRace(),rg=raceFixture();
@@ -142,6 +195,29 @@ console.log('Five-star helicopter lifecycle, response rows, Coral FM rotation: P
 }
 console.log('Street race lifecycle, rival nudge, district tints: PASS');
 
+function rampageFixture(){
+ const rp={world:seeded,player:{...playerCar,cash:0},vehicle:null,parkedCars:[],missions:{activity:null,totalEarned:0,splash:null},popups:createPopups(),playSeconds:0,vehicleEffects:createVehicleEffects(),outcome:null};
+ const start=rampageStartPoint(seeded);
+ rp.vehicle=createCar(start.x,start.y,0,3,undefined,'player-driven');Object.assign(rp.player,start);return rp;
+}
+{
+ const rampage=createRampage(),rp=rampageFixture();
+ assert.equal(startRampage(rampage,rp),true);assert.equal(rampage.phase,'running');assert.equal(rp.missions.activity,'rampage');assert(rampage.ring);assert.equal(rampage.timeLeft,RAMPAGE_TIME);
+ rp.vehicleEffects.nearChainUntil=999;rp.vehicleEffects.nearChain=1;updateRampage(rampage,rp,1/60);assert.equal(rampage.score,100);
+ rp.vehicleEffects.nearChain=3;updateRampage(rampage,rp,1/60);assert.equal(rampage.score,400);
+ Object.assign(rp.vehicle,rampage.ring);updateRampage(rampage,rp,1/60);assert.equal(rampage.score,650);
+ rampage.timeLeft=.01;updateRampage(rampage,rp,.05);
+ assert.equal(rampage.phase,'done');assert.equal(rp.player.cash,100);assert.equal(rp.missions.splash?.name,'RAMPAGE');assert.equal(rp.missions.activity,null);
+ assert.equal(rampagePayout(2000),500);assert.equal(rampagePayout(1000),250);assert.equal(rampagePayout(400),100);assert.equal(rampagePayout(1),25);assert.equal(rampagePayout(0),0);
+}
+{
+ const rampage=createRampage(),aborted=rampageFixture();
+ assert.equal(startRampage(rampage,aborted),true);aborted.outcome={kind:'wasted'};
+ updateRampage(rampage,aborted,1/60);
+ assert.equal(rampage.phase,'idle');assert.equal(aborted.missions.activity,null);assert.equal(aborted.player.cash,0);
+}
+console.log('Rampage lifecycle, stunts, rings, payouts and outcome abort: PASS');
+
 const {updateTraffic}=await import('../src/traffic.js');
 const stagedCar=createCar(1000,lane,0,1,undefined,'traffic-driven');stagedCar.speed=92;
 updateTraffic({cars:[stagedCar],timer:1},seeded,playerCar,[stagedCar],[],1/60,()=>{});
@@ -155,12 +231,16 @@ for(const scene of ['start','mission','foot','chase','cover']){
  assert.equal(staged.state,scene==='start'?'menu':'playing');
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
- if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);assert(staged.race);assert.equal(staged.race.phase,'running');assert(staged.race.rival);assert.equal(staged.race.checkpoints.length,5);assert.equal(staged.race.position,2);}
+ if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);assert(staged.race);assert.equal(staged.race.phase,'running');assert(staged.race.rival);assert.equal(staged.race.checkpoints.length,5);assert.equal(staged.race.position,2);assert(responseRows(staged).every(row=>typeof row.callsign==='string'&&row.callsign.length>0));}
  if(scene==='cover'){
   assert.equal(staged.race.phase,'idle');
   assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS ×3');assert.equal(staged.vehicleEffects.nearChain,3);assert(staged.popups.list.some(entry=>entry.life>0&&entry.text==='NEAR MISS ×3'));assert(staged.vehicleEffects.markCursor>0);
   assert(staged.police.heli);assert([staged.police.heli.x,staged.police.heli.y].every(Number.isFinite));
   assert.equal(staged.combat.weapon,'pistol');assert.equal(staged.combat.ammo,12);assert.equal(staged.combat.reserve,36);
+  assert(staged.fuel&&staged.rampage);assert.equal(staged.vehicle.fuel,100);
+  const coverRows=responseRows(staged);
+  assert(coverRows.every(row=>typeof row.callsign==='string'&&row.callsign.length>0));
+  assert(coverRows.some(row=>row.callsign==='AIR-1'));assert(coverRows.some(row=>row.callsign.startsWith('INT-')));
  }
  console.log(`Seed=1 ${scene} scene: 180 frames, pinned clock, finite actors PASS`);
 }

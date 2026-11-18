@@ -15,6 +15,8 @@ import { loadSave, writeSave, hasSave } from './save.js';
 import { createAudio } from './audio.js';
 import { createPopups, updatePopups, drawPopups, spawnPopup } from './popups.js';
 import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js';
+import { createFuelState, updateFuel, drawFuelWorld } from './fuel.js';
+import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -33,6 +35,8 @@ export const game = {
   save: loadSave(), missions: null, input,
   width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio || 1,
   audio, vehicleEffects: createVehicleEffects(), popups: createPopups(), race: createRace(),
+  fuel: createFuelState(),
+  rampage: createRampage(),
 };
 canvas.addEventListener('pointerdown',()=>{audio.unlock();if(game.missions?.dialogue)game.dialogueClick=true;});
 window.addEventListener('keydown', event => { audio.unlock(); if (event.code === 'KeyM' && !event.repeat) audio.toggleMute(); });
@@ -123,7 +127,7 @@ function startGame(foot = false, record=null) {
   game.missions.marker=game.missions.currentMission<5?world.spawnPoints.diner:null;
   if(game.missions.currentMission>=5)game.missions.objective='Story complete · Free roam in Coral Bay';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -254,6 +258,8 @@ function update(dt, time) {
     if(game.player.health<=0)finishOutcome('wasted');else if(game.police.arrest>=1)finishOutcome('busted');
     if(game.recentCrimes.length>96){const floor=game.wanted.lastId-32;game.recentCrimes=game.recentCrimes.filter(c=>c.id>floor);}
     if(game.race)updateRace(game.race,game,dt);
+    updateFuel(game,dt);
+    if(game.rampage)updateRampage(game.rampage,game,dt);
     game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase' && shot !== 'cover') game.clockMinutes += dt;
     audio.update(game, dt);
     const car=game.vehicle,look=car?car.speed*.3:0;
@@ -267,6 +273,7 @@ function update(dt, time) {
 function frame(time) {
   missionKeysConsumed=false;
   if(game.state==='playing'&&game.player.health<=0)finishOutcome('wasted');
+  if(game.outcome&&game.rampage?.phase==='running')updateRampage(game.rampage,game,0);
   const elapsed = lastTime === undefined ? 0 : Math.min((time-lastTime)/1000,.1); lastTime = time;
   
   if (!game.outcome && input.anyPressed('Escape','KeyP')) {
@@ -292,6 +299,8 @@ function frame(time) {
     drawHeli(ctx,game.police,time);
     if(game.missions)drawMissionWorld(ctx,game.missions,game,time);
     if(game.race)drawRaceWorld(ctx,game.race,game,time);
+    drawFuelWorld(ctx,game,time);
+    if(game.rampage)drawRampageWorld(ctx,game.rampage,game,time);
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);
     drawCombat(ctx,game);
     drawPopups(ctx,game.popups);

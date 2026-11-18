@@ -9,7 +9,8 @@ export function spawnHeli(police,x,y){
 }
 export function spawnPolice(police,x,y,heading=0,interceptor=false){
   const car=createCar(x,y,heading,1,interceptor?'#243f50':'#f2f3e7','police-driven');car.police=true;car.interceptor=interceptor;car.model={...car.model,name:interceptor?'CBPD Interceptor':'CBPD Patrol'};
-  const unit={id:++police.nextId,x,y,car,health:100,onFoot:false,down:false,lost:0,life:24,fireTimer:1,hostile:false,waypoint:null};police.units.push(unit);return unit;
+  const id=++police.nextId;
+  const unit={id,callsign:interceptor?`INT-${id}`:`CB-${String(id).padStart(2,'0')}`,x,y,car,health:100,onFoot:false,down:false,lost:0,life:24,fireTimer:1,hostile:false,waypoint:null};police.units.push(unit);return unit;
 }
 function nearest(list,value,key){return list.reduce((a,b)=>Math.abs(b[key]-value)<Math.abs(a[key]-value)?b:a);}
 // A modest grid route: join the nearest intersection, then follow road axes.

@@ -4,6 +4,7 @@ import { setWanted } from './wanted.js';
 import { writeSave } from './save.js';
 import { spawnPopup } from './popups.js';
 import { startRace, raceStartPoint } from './race.js';
+import { startRampage, rampageStartPoint } from './rampage.js';
 
 export const MISSIONS = [
   { id:'first-shift', name:'First Shift', reward:ECONOMY.firstShift, time:240 },
@@ -84,12 +85,14 @@ export function updateMissions(s,g,dt,input,parked,traffic){
   if(s.completion){if(!s.dialogue&&input.wasPressed('KeyE')){s.completion=null;s.completedStoryScreen=true;return;}else if(!s.dialogue)return;}
   for(let i=0;i<s.umbrellas.length;i++)if(!g.vehicle&&!s.collectibles.includes(i)&&near(g,s.umbrellas[i],25)){s.collectibles.push(i);pop(g,s.umbrellas[i].x,s.umbrellas[i].y-30,`COLLECTIBLE ${s.collectibles.length}/12`,'#7be3f0');g.save=writeSave(g,s);}
   if(s.dialogue){if(input.wasPressed('KeyE')||g.dialogueClick){g.dialogueClick=false;s.dialogue.index++;if(s.dialogue.index>=s.dialogue.lines.length){const d=s.dialogue.done;s.dialogue=null;if(d)d();}}return;}
-  if(s.retry&&!g.vehicle&&input.wasPressed('KeyE')&&near(g,diner(g),90)){begin(s,g,s.currentMission);return;}
+  if(s.retry&&s.activity!=='rampage'&&!g.vehicle&&input.wasPressed('KeyE')&&near(g,diner(g),90)){begin(s,g,s.currentMission);return;}
   if(!s.activity&&!g.vehicle&&s.currentMission<5&&near(g,diner(g),58)&&input.wasPressed('KeyE')){begin(s,g,s.currentMission);return;}
   g.interacting=input.wasPressed('KeyE');
   if(!s.activity){updateActivities(s,g,dt,input,parked,traffic);return;}
   if(s.activity==='mission'&&(g.player.health<=0||g.police?.arrest>=1)){failMission(s,g.player.health<=0?'You were wasted.':'You were busted.');return;}
   if(s.activity==='race')return;
+  if(s.activity==='rampage')return;
+  if(s.activity==='mission'&&g.vehicle)g.vehicle.fuel=Math.max(g.vehicle.fuel??100,40);
   if(s.activity==='taxi'){updateActivities(s,g,dt,input,parked,traffic);return;}
   if(s.phase!=='start')activeStep(s,g,dt,parked);
 }
@@ -101,13 +104,14 @@ function updateActivities(s,g,dt,input,parked,traffic){
   if(near(g,g.world.spawnPoints.garage,80)){s.objective='Marlin Auto Works · 1 repair';}
   if(!g.vehicle&&near(g,diner(g),75)){s.objective=s.currentMission>=5?'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay':'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay';}
   const raceStart=raceStartPoint(g.world);if(near(g,raceStart,95)){s.objective=g.vehicle?'Beach Road · 4 STREET RACE':'Beach Road · STREET RACE — bring a car, press 4';if(g.vehicle&&input.wasPressed('Digit4')&&g.race)startRace(g.race,g);}
+  const rampageStart=rampageStartPoint(g.world);if(near(g,rampageStart,95)){s.objective=g.vehicle?'Downtown · 5 RAMPAGE':'Downtown · RAMPAGE — bring a car, press 5';if(g.vehicle&&input.wasPressed('Digit5')&&g.rampage)startRampage(g.rampage,g);}
   if(near(g,g.world.spawnPoints.garage,80)&&g.vehicle&&input.wasPressed('Digit1')&&g.player.cash>=ECONOMY.repair){g.player.cash-=ECONOMY.repair;g.vehicle.health=100;s.objective='Vehicle repaired';}
   else if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit2')&&g.player.cash>=ECONOMY.armour){g.player.cash-=ECONOMY.armour;g.player.armour=100;s.objective='Armour refilled';}
   if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit1'))startTaxi(s,g);
   else if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit3')&&s.completed.length){s.resumeMission=s.currentMission;s.scoreRun=true;begin(s,g,s.completed[s.completed.length-1]);}
 }
 export function drawMissionWorld(ctx,s,g,time){
-  const marker=s.marker;
+  const marker=s.activity==='rampage'?null:s.marker;
   if(marker){const pulse=1+Math.sin(time*.005)*.12;ctx.save();ctx.strokeStyle='#ffe16dcc';ctx.fillStyle='#ffe16d22';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(marker.x,marker.y+4,29*pulse,13*pulse,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.globalAlpha=.32+Math.sin(time*.004)*.08;ctx.fillStyle='#ffdc62';ctx.beginPath();ctx.moveTo(marker.x-12,marker.y);ctx.lineTo(marker.x+12,marker.y);ctx.lineTo(marker.x+5,marker.y-100);ctx.lineTo(marker.x-5,marker.y-100);ctx.closePath();ctx.fill();ctx.restore();}
   for(let i=0;i<s.umbrellas.length;i++)if(!s.collectibles.includes(i)){const p=s.umbrellas[i];ctx.fillStyle='#e85f51';ctx.fillRect(p.x-10,p.y-4,20,5);ctx.fillStyle='#fff0d2';ctx.beginPath();ctx.arc(p.x,p.y-4,11,Math.PI,Math.PI*2);ctx.fill();}
 }

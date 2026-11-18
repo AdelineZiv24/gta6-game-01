@@ -13,7 +13,7 @@ export const CAR_COLORS=['#dc735b','#5ba8a8','#eee1b9','#577997','#936f99','#87a
 const colors=CAR_COLORS;
 export function createCar(x,y,heading=0,model=0,color=colors[model%colors.length],driver='parked') {
   const m=typeof model==='number'?MODELS[model]:model;
-  return {x,y,heading,model:m,color:m===MODELS[5]?'#efc650':color,speed:0,steering:0,health:100,driver,vx:0,vy:0,radius:m.width/2+2,shake:0,impact:0,cooldown:0,disabled:0};
+  return {x,y,heading,model:m,color:m===MODELS[5]?'#efc650':color,speed:0,steering:0,health:100,driver,vx:0,vy:0,radius:m.width/2+2,shake:0,impact:0,cooldown:0,disabled:0,fuel:100};
 }
 export function setupParkedCars(world) {
   const random=createRandom('bay-parking'); const cars=[];
@@ -35,7 +35,8 @@ export function updateCar(car,input,world,dt,effects=null) {
   car.speed+=(throttle*(car.speed< -5?300:car.model.acceleration)-brake*(car.speed>5?310:car.model.acceleration*.65))*dt;
   car.speed*=Math.exp(-(hand?2.6:.19)*dt);
   car.speed=Math.sign(car.speed)*Math.max(0,Math.abs(car.speed)-(hand?65:8)*dt);
-  car.speed=clamp(car.speed,-95,car.model.topSpeed*(car.health<20?.6:1));
+  const topSpeed=car.model.topSpeed*(car.health<20?.6:1),fuelCap=(car.fuel??100)<=0?Math.min(40,topSpeed):topSpeed;
+  car.speed=clamp(car.speed,-95,fuelCap);
   const steer=Number(input.isDown('KeyD')||input.isDown('ArrowRight'))-Number(input.isDown('KeyA')||input.isDown('ArrowLeft'));
   car.steering+=(steer*.55-car.steering)*Math.min(1,dt*9);
   const oldHeading=car.heading;
@@ -51,6 +52,7 @@ export function updateCar(car,input,world,dt,effects=null) {
     if(!carBlocked(world,car,car.x,car.y+dy))car.y+=dy;else {car.vy*= -.12;hit=true;}
     if(hit){car.impact=Math.abs(car.speed);emitVehicleImpact(effects,car.x+Math.cos(car.heading)*car.model.length/2,car.y+Math.sin(car.heading)*car.model.length/2,car.impact,false,car);car.health=Math.max(0,car.health-Math.abs(car.speed)*.025);car.speed*=.65;car.shake=Math.min(5,car.impact/55);}
   }
+  if(car.fuel>0)car.fuel=Math.max(0,car.fuel-Math.hypot(car.vx,car.vy)*dt*.0011);
 }
 export function resolveCarContacts(cars,report,time,effects=null) {
   for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++) {

@@ -31,6 +31,7 @@ export function racePosition(race,g) {
 
 export function startRace(race,g) {
   if(!race||race.phase!=='idle'||!g.vehicle||!g.world||g.missions?.activity)return false;
+  if(g.vehicle)g.vehicle.fuel=Math.max(g.vehicle.fuel??100,40);
   const start=raceStartPoint(g.world);
   race.checkpoints=buildRoute(g.world);race.playerNext=race.rivalNext=0;race.elapsed=0;race.result=null;race.rivalFinishedAt=0;race.stuckT=0;
   const rival=createCar(start.x-95,start.y-20,0,3,'#b65158','rival-driven');
