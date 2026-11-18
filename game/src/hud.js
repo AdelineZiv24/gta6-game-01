@@ -1,4 +1,18 @@
 import { WORLD, FONT } from './config.js';
+import { radioNow } from './radio.js';
+
+export function responseRows(game) {
+  const focus = game.vehicle || game.player;
+  const distanceTo = target => Math.round(Math.hypot(target.x-focus.x,target.y-focus.y));
+  const seen = game.wanted.seen;
+  const rows = game.police.units.map(unit => ({
+    type: unit.car.interceptor?'INTERCEPTOR':unit.onFoot?'OFFICER · FOOT':'PATROL',
+    distance: distanceTo(unit.car),
+    state: unit.down||unit.health<=0||unit.car.health<=0?'DISABLED':seen?'PURSUIT':'SEARCHING',
+  }));
+  if(game.police.heli)rows.push({type:'HELI',distance:distanceTo(game.police.heli),state:seen?'SPOTLIGHT':'SEARCHING'});
+  return rows.sort((first,second)=>first.distance-second.distance);
+}
 
 function drawPortrait(ctx, speaker, x, y) {
   const styles = {
@@ -32,18 +46,15 @@ export function drawHUD(ctx, game) {
   const inset=20;panel(inset,20,208,96); ctx.fillStyle='#fff3dc'; ctx.fillText(player.name.toUpperCase(),inset+14,40);
   const bar = (y,value,max,color,label) => { ctx.fillStyle='#ffffff28';ctx.fillRect(34,y,150,7);ctx.fillStyle=color;ctx.fillRect(34,y,150*Math.max(0,Math.min(1,value/max)),7);ctx.fillStyle='#fff3dc';ctx.font=`10px ${FONT}`;ctx.fillText(label,193,y+4); };
   bar(59,player.health,player.maxHealth,'#ef826c','HP'); bar(80,player.armour,player.maxArmour,'#71d3d9','AR');
-  if(game.police?.units?.length){
-    const focus=game.vehicle||player,units=[...game.police.units].sort((first,second)=>Math.hypot(first.car.x-focus.x,first.car.y-focus.y)-Math.hypot(second.car.x-focus.x,second.car.y-focus.y));
-    const rows=Math.min(4,units.length)+(units.length>4?1:0);
-    panel(inset,124,208,36+rows*19);ctx.textAlign='left';ctx.fillStyle='#f9d777';ctx.font=`bold 11px ${FONT}`;ctx.fillText('CBPD RESPONSE',inset+14,144);
+  if(game.police?.units?.length||game.police?.heli){
+    const rows=responseRows(game);
+    const rowCount=Math.min(4,rows.length)+(rows.length>4?1:0);
+    panel(inset,124,208,36+rowCount*19);ctx.textAlign='left';ctx.fillStyle='#f9d777';ctx.font=`bold 11px ${FONT}`;ctx.fillText('CBPD RESPONSE',inset+14,144);
     ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;
-    units.slice(0,4).forEach((unit,index)=>{
-      const type=unit.car.interceptor?'INTERCEPTOR':unit.onFoot?'OFFICER · FOOT':'PATROL';
-      const distance=Math.round(Math.hypot(unit.car.x-focus.x,unit.car.y-focus.y));
-      const state=unit.down||unit.health<=0||unit.car.health<=0?'DISABLED':game.wanted.seen?'PURSUIT':'SEARCHING';
+    rows.slice(0,4).forEach(({type,distance,state},index)=>{
       ctx.fillText(`${type}  ${distance} m  ${state}`,inset+14,165+index*19,180);
     });
-    if(units.length>4)ctx.fillText(`+${units.length-4} MORE`,inset+14,241);
+    if(rows.length>4)ctx.fillText(`+${rows.length-4} MORE`,inset+14,241);
   }
   panel(Math.max(inset,w-146),20,Math.min(126,w-2*inset),73);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 22px ${FONT}`;ctx.fillText(`$${player.cash.toLocaleString('en-US')}`,w-inset-14,45);
   const minutes = Math.floor(game.clockMinutes) % 1440;
@@ -70,6 +81,15 @@ export function drawHUD(ctx, game) {
     ctx.fillStyle='#fa6d55';ctx.strokeStyle='#fff4d8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx+dx,cy+dy-8);ctx.lineTo(cx+dx+7,cy+dy);ctx.lineTo(cx+dx,cy+dy+8);ctx.lineTo(cx+dx-7,cy+dy);ctx.closePath();ctx.fill();ctx.stroke();
   }
   for(const unit of game.police?.units||[]){const dx=(unit.car.x-player.x)*scale,dy=(unit.car.y-player.y)*scale;ctx.fillStyle='#56c9e5';ctx.strokeStyle='#123d5b';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),4,0,Math.PI*2);ctx.fill();ctx.stroke();}
+  const heli=game.police?.heli;
+  if(heli){
+    const dx=(heli.x-player.x)*scale,dy=(heli.y-player.y)*scale,limit=radius-8;
+    const blipX=cx+Math.max(-limit,Math.min(limit,dx)),blipY=cy+Math.max(-limit,Math.min(limit,dy));
+    ctx.fillStyle='#eafcff';ctx.strokeStyle='#0e5a74';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(blipX,blipY,6,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.strokeStyle='rgba(234,252,255,0.7)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(blipX,blipY,9,0,Math.PI*2);ctx.stroke();
+  }
   ctx.translate(cx,cy);ctx.rotate(player.facing);if(game.vehicle){ctx.fillStyle=game.vehicle.color;ctx.fillRect(-10,-5,20,10);ctx.fillStyle='#173c49';ctx.fillRect(-3,-4,7,8);}else {ctx.fillStyle='#fff9e6';ctx.strokeStyle='#17424b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(-7,7);ctx.lineTo(-3,0);ctx.lineTo(-7,-7);ctx.closePath();ctx.fill();ctx.stroke();}ctx.restore();
   ctx.strokeStyle='#fff1d9';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();ctx.textAlign='center';ctx.fillStyle='#163e47';ctx.font=`bold 11px ${FONT}`;ctx.fillText('N',cx,cy-radius+13);
   if(game.vehicle){panel(w-234,h-116,214,92);ctx.textAlign='right';ctx.fillStyle='#fff3dc';ctx.font=`bold 13px ${FONT}`;ctx.fillText(game.vehicle.model.name,w-34,h-99);ctx.fillStyle='#f9d777';ctx.font=`bold 40px ${FONT}`;ctx.fillText(`${Math.round(Math.abs(game.vehicle.speed)*.32)} km/h`,w-34,h-64);ctx.font=`11px ${FONT}`;ctx.fillStyle=game.vehicle.health<30?'#ef826c':'#fff3dc';ctx.fillText(`COND ${Math.max(0,Math.round(game.vehicle.health))}%`,w-34,h-36);}
@@ -80,7 +100,16 @@ export function drawHUD(ctx, game) {
   }
   if(game.police?.arrest>0){panel(w/2-130,h*.32,260,54);ctx.textAlign='center';ctx.fillStyle='#ff9d8d';ctx.font=`bold 18px ${FONT}`;ctx.fillText('BUSTED',w/2,h*.32+18);ctx.fillStyle='#ffffff33';ctx.fillRect(w/2-114,h*.32+35,228,8);ctx.fillStyle='#ef826c';ctx.fillRect(w/2-114,h*.32+35,228*game.police.arrest,8);}
   const combat=game.combat;
-  if(combat&&!game.vehicle){panel(w-230,h-96,210,72);ctx.textAlign='right';ctx.fillStyle='#fff3dc';ctx.font=`bold 15px ${FONT}`;ctx.fillText(combat.weapon==='pistol'?'PISTOL':'FISTS',w-34,h-75);ctx.font=`13px ${FONT}`;ctx.fillStyle='#f9d777';ctx.fillText(combat.weapon==='pistol'?(combat.reload>0?'RELOADING…':`${combat.ammo} / ${combat.reserve}   •   R RELOAD`):'CLICK / F  SWING',w-34,h-49);}
+  if(combat){
+    const top=h-(game.vehicle?196:96);
+    panel(w-230,top,210,72);ctx.textAlign='right';ctx.fillStyle='#fff3dc';ctx.font=`bold 15px ${FONT}`;ctx.fillText(combat.weapon==='pistol'?'PISTOL':'FISTS',w-34,top+21);
+    ctx.font=`13px ${FONT}`;ctx.fillStyle='#f9d777';ctx.fillText(combat.weapon==='pistol'?(combat.reload>0?'RELOADING…':`${combat.ammo} / ${combat.reserve}   •   R RELOAD`):'CLICK / F  SWING',w-34,top+47);
+  }
+  if(game.vehicle){
+    const {station,title,artist}=radioNow(game.playSeconds);
+    panel(w/2-255,h-272,510,30);ctx.textAlign='center';ctx.font=`12px ${FONT}`;ctx.fillStyle='#fff3dc';
+    ctx.fillText(`♪ ${station} · "${title}" — ${artist}`,w/2,h-257,486);
+  }
   const message=game.entering?'Working the door…':game.noticeUntil>game.playSeconds?game.notice:game.vehicle?'W / S  Accelerate / Brake • A / D  Steer • Space  Handbrake • E  Exit':'E  Enter car • RMB Aim • Click / F Attack • 1 Fists / 2 Pistol';
   panel(Math.max(inset,w/2-255),h-236,Math.min(510,w-2*inset),34);ctx.textAlign='center';ctx.font=`12px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText(message,w/2,h-219,Math.min(490,w-60));
   ctx.globalAlpha=1;const opacity=Math.max(0,Math.min(1,(12-game.playSeconds)/3));

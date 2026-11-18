@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { responseRows } from '../src/hud.js';
+import { radioNow, RADIO_TRACKS } from '../src/radio.js';
 const listeners=new Map(),elements=new Map(),storage=new Map();let raf,confirmResult=false,confirms=0,writes=0;
 const ctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:(...args)=>{for(const value of args)if(typeof value==='number')assert(Number.isFinite(value),`${String(k)} received a non-finite coordinate`);},set:(o,k,v)=>(o[k]=v,true)});
 function element(id){if(!elements.has(id))elements.set(id,{id,hidden:true,disabled:false,style:{},focus(){},addEventListener(){},getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:1280,height:800})});return elements.get(id);}
@@ -64,6 +66,33 @@ for(const stars of [1,2,3]){
 }
 console.log('Seed determinism, rooftop/beach dressing, pooled skids/particles, near misses, high-pressure interceptor: PASS');
 
+{
+ const police=createPolice();police.spawnTimer=5;
+ const pursuitCar={...playerCar};
+ const fixture={police,wanted:{stars:5,lastKnown:pursuitCar,seen:true},player:pursuitCar,vehicle:pursuitCar,playSeconds:0};
+ const spawnX=pursuitCar.x-190,spawnY=pursuitCar.y-150;
+ const camera={x:pursuitCar.x,y:lane,width:500,height:400},dt=1/60;
+ for(let frame=0;frame<120;frame++){
+  updatePolice(police,fixture,seeded,camera,dt,()=>{});
+  assert(police.heli);
+  assert([police.heli.x,police.heli.y,police.heli.lightX,police.heli.lightY].every(Number.isFinite));
+  assert(Math.hypot(police.heli.x-pursuitCar.x,police.heli.y-pursuitCar.y)<420);
+  pursuitCar.x+=165*dt;
+  fixture.playSeconds+=dt;
+ }
+ assert(Math.hypot(police.heli.x-spawnX,police.heli.y-spawnY)>1);
+ assert(responseRows(fixture).some(row=>row.type==='HELI'&&row.state==='SPOTLIGHT'));
+ fixture.wanted.seen=false;
+ assert(responseRows(fixture).some(row=>row.type==='HELI'&&row.state==='SEARCHING'));
+ fixture.wanted.stars=3;
+ updatePolice(police,fixture,seeded,camera,dt,()=>{});
+ assert.equal(police.heli,null);
+}
+assert.notEqual(radioNow(0).index,radioNow(25).index);
+assert.equal(radioNow(24*RADIO_TRACKS.length).index,radioNow(0).index);
+assert(RADIO_TRACKS.length>=5&&RADIO_TRACKS.every(track=>track.title.trim()&&track.artist.trim()));
+console.log('Five-star helicopter lifecycle, response rows, Coral FM rotation: PASS');
+
 const {updateTraffic}=await import('../src/traffic.js');
 const stagedCar=createCar(1000,lane,0,1,undefined,'traffic-driven');stagedCar.speed=92;
 updateTraffic({cars:[stagedCar],timer:1},seeded,playerCar,[stagedCar],[],1/60,()=>{});
@@ -78,6 +107,10 @@ for(const scene of ['start','mission','foot','chase','cover']){
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
  if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);}
- if(scene==='cover'){assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,4);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS');assert(staged.vehicleEffects.markCursor>0);}
+ if(scene==='cover'){
+  assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS');assert(staged.vehicleEffects.markCursor>0);
+  assert(staged.police.heli);assert([staged.police.heli.x,staged.police.heli.y].every(Number.isFinite));
+  assert.equal(staged.combat.weapon,'pistol');assert.equal(staged.combat.ammo,12);assert.equal(staged.combat.reserve,36);
+ }
  console.log(`Seed=1 ${scene} scene: 180 frames, pinned clock, finite actors PASS`);
 }

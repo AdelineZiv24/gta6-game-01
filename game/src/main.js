@@ -1,5 +1,5 @@
 import { createWanted, updateWanted, clearWanted, setWanted } from './wanted.js';
-import { createPolice, spawnPolice, updatePolice, drawOfficers } from './police.js';
+import { createPolice, spawnPolice, spawnHeli, updatePolice, drawOfficers, drawHeliLight, drawHeli } from './police.js';
 import { createCombat, grantPistol, updateCombat, policeFire, damagePlayer, drawCombat } from './combat.js';
 import { WORLD } from './config.js';
 import { createWorld } from './world.js';
@@ -138,10 +138,13 @@ function startGame(foot = false, record=null) {
     const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+[430,610][i],road.y+20,0,i+1,undefined,'traffic-driven');car.speed=[125,115][i];traffic.cars.push(car);}
   }
   if(shot==='cover'){
-    setWanted(game.wanted,4,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;
+    setWanted(game.wanted,5,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;
     for(const [index,offset] of [-100,-170,-240,-310].entries()){
       const unit=spawnPolice(game.police,game.vehicle.x+offset,game.vehicle.y+[-24,14,-40,22][index],0,index===0);unit.car.speed=180;
     }
+    const heli=spawnHeli(game.police,game.vehicle.x-150,game.vehicle.y-120);
+    heli.lightX=game.vehicle.x;heli.lightY=game.vehicle.y;
+    grantPistol(game,48);
     game.police.spawnTimer=5;
     const road=world.roads.horizontal[3];
     for(let index=0;index<3;index++){
@@ -277,10 +280,12 @@ function frame(time) {
   if(game.state!=='menu' && !(game.state==='help' && helpReturn==='menu')) {
     const camera=renderer.camera;
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view());
+    drawHeliLight(ctx,game.police);
     for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p);
     for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time);
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view(),true);
     drawOfficers(ctx,game.police);
+    drawHeli(ctx,game.police,time);
     if(game.missions)drawMissionWorld(ctx,game.missions,game,time);
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);
     drawCombat(ctx,game);
