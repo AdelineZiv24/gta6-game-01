@@ -1,4 +1,5 @@
 import { WORLD, FONT } from './config.js';
+import { repProgress } from './rep.js';
 import { radioNow } from './radio.js';
 import { gasStations } from './fuel.js';
 
@@ -58,7 +59,8 @@ export function drawHUD(ctx, game) {
     });
     if(rows.length>4)ctx.fillText(`+${rows.length-4} MORE`,inset+14,241);
   }
-  panel(Math.max(inset,w-146),20,Math.min(126,w-2*inset),73);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 22px ${FONT}`;ctx.fillText(`$${player.cash.toLocaleString('en-US')}`,w-inset-14,45);
+  panel(Math.max(inset,w-230),20,Math.min(210,w-2*inset),73);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 22px ${FONT}`;ctx.fillText(`$${player.cash.toLocaleString('en-US')}`,w-inset-14,45);
+  const rep=repProgress(game.rep?.xp??0);ctx.textAlign='left';ctx.fillStyle='#71d3d9';ctx.font=`bold 11px ${FONT}`;ctx.fillText(`REP LV ${rep.level}`,w-216,45);ctx.fillStyle='#ffffff28';ctx.fillRect(w-216,86,182,4);ctx.fillStyle='#71d3d9';ctx.fillRect(w-216,86,Math.round(182*rep.fraction),4);ctx.textAlign='right';
   const minutes = Math.floor(game.clockMinutes) % 1440;
   ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}  •  CORAL BAY`,w-34,75);
   if (objective?.text) {
@@ -70,15 +72,15 @@ export function drawHUD(ctx, game) {
   }
   if(game.missions?.dialogue){const d=game.missions.dialogue,line=d.lines[d.index]||'';const bw=Math.min(620,w-40),words=line.split(' '),lines=[];let row='';ctx.font=`14px ${FONT}`;for(const word of words){if(row&&ctx.measureText(row+' '+word).width>bw-108){lines.push(row);row=word;}else row+=(row?' ':'')+word;}if(row)lines.push(row);const bh=70+lines.length*20,x=(w-bw)/2,y=h-bh-252;ctx.fillStyle='#103c48f2';ctx.beginPath();ctx.roundRect(x,y,bw,bh,8);ctx.fill();drawPortrait(ctx,d.speaker,x+14,y+14);ctx.fillStyle='#f9d777';ctx.textAlign='left';ctx.font=`bold 14px ${FONT}`;ctx.fillText(d.speaker,x+88,y+24);ctx.fillStyle='#fff3dc';ctx.font=`14px ${FONT}`;lines.forEach((text,i)=>ctx.fillText(text,x+88,y+50+i*20));ctx.textAlign='right';ctx.font=`10px ${FONT}`;ctx.fillText('E / CLICK',x+bw-18,y+bh-18);}
   if(game.missions?.retry){ctx.textAlign='center';ctx.fillStyle='#ffe39a';ctx.font=`bold 14px ${FONT}`;ctx.fillText('MISSION FAILED · RETURN TO THE DINER · E TO RETRY',w/2,h*.56);}
-  if(game.missions?.currentMission<5&&!game.missions.activity&&!game.missions.retry&&game.missions?.objective?.includes('Meet Lena')){ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`11px ${FONT}`;ctx.fillText('E · TALK',w/2,h*.61);}
-  if(game.missions&&!game.missions.activity&&!game.missions.retry){const p=game.player;if(Math.hypot(p.x-game.world.spawnPoints.diner.x,p.y-game.world.spawnPoints.diner.y)<75){ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`bold 12px ${FONT}`;ctx.fillText(game.missions.currentMission<5?'E · TALK TO LENA':'1 · TAXI · 2 · ARMOUR · 3 · REPLAY',w/2,h*.64);}}
-  if(game.missions?.completion&&!game.missions.dialogue&&!game.missions.completion.shown){const c=game.missions.completion;ctx.fillStyle='#103c48ee';ctx.fillRect(w*.2,h*.25,w*.6,h*.45);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 30px ${FONT}`;ctx.fillText('SUNRISE RUN COMPLETE',w/2,h*.34);ctx.fillStyle='#fff3dc';ctx.font=`16px ${FONT}`;ctx.fillText(`Total earnings $${c.earnings.toLocaleString()} · Story ${Math.floor(c.time/60)}:${String(Math.floor(c.time%60)).padStart(2,'0')}`,w/2,h*.44);ctx.fillText('Press E to return to free roam',w/2,h*.54);}
+  if(game.missions?.currentMission<6&&!game.missions.activity&&!game.missions.retry&&game.missions?.objective?.includes('Meet Lena')){ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`11px ${FONT}`;ctx.fillText('E · TALK',w/2,h*.61);}
+  if(game.missions&&!game.missions.activity&&!game.missions.retry){const p=game.player;if(Math.hypot(p.x-game.world.spawnPoints.diner.x,p.y-game.world.spawnPoints.diner.y)<75){ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`bold 12px ${FONT}`;ctx.fillText(game.missions.currentMission<6?'E · TALK TO LENA':'1 · TAXI · 2 · ARMOUR · 3 · REPLAY',w/2,h*.64);}}
+  if(game.missions?.completion&&!game.missions.dialogue&&!game.missions.completion.shown){const c=game.missions.completion;ctx.fillStyle='#103c48ee';ctx.fillRect(w*.2,h*.25,w*.6,h*.45);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 30px ${FONT}`;ctx.fillText(c.title||'SUNRISE RUN COMPLETE',w/2,h*.34);ctx.fillStyle='#fff3dc';ctx.font=`16px ${FONT}`;ctx.fillText(`Total earnings $${c.earnings.toLocaleString()} · Story ${Math.floor(c.time/60)}:${String(Math.floor(c.time%60)).padStart(2,'0')}`,w/2,h*.44);ctx.fillText('Press E to return to free roam',w/2,h*.54);}
   const splash=game.missions?.splash;
   const rampage=game.rampage;
   if(splash&&!game.missions?.completion&&game.playSeconds<splash.until){
     const sideSplash=w<920&&(rampage?.phase==='running'||rampage?.phase==='done');
     const sw=Math.min(460,w-(sideSplash?258:40)),sx=sideSplash?inset:(w-sw)/2,sy=sideSplash?Math.max(h*.27,263):h*.27,center=sx+sw/2;
-    panel(sx,sy,sw,108);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText('MISSION COMPLETE',center,sy+22);ctx.fillStyle='#fff3dc';ctx.font=`bold 25px ${FONT}`;ctx.fillText(splash.name.toUpperCase(),center,sy+50);ctx.fillStyle='#8df0a5';ctx.font=`bold 20px ${FONT}`;ctx.fillText(`+$${splash.reward.toLocaleString('en-US')}`,center,sy+78);ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`TOTAL $${splash.total.toLocaleString('en-US')}`,center,sy+97);
+    panel(sx,sy,sw,108);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText(splash.header||'MISSION COMPLETE',center,sy+22);ctx.fillStyle='#fff3dc';ctx.font=`bold 25px ${FONT}`;ctx.fillText(splash.name.toUpperCase(),center,sy+50);ctx.fillStyle='#8df0a5';ctx.font=`bold 20px ${FONT}`;ctx.fillText(splash.reward>0?`+$${splash.reward.toLocaleString('en-US')}`:splash.repLevel?`STREET REP · LV ${splash.repLevel}`:'+$0',center,sy+78);ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`TOTAL $${splash.total.toLocaleString('en-US')}`,center,sy+97);
   }
   if(game.notice&&game.playSeconds<(game.noticeUntil||0)){const noticeWidth=Math.min(360,w-40);ctx.fillStyle='#103c48e8';ctx.beginPath();ctx.roundRect((w-noticeWidth)/2,h*.68,noticeWidth,42,8);ctx.fill();ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`bold 13px ${FONT}`;ctx.fillText(game.notice,w/2,h*.68+21,noticeWidth-24);}
   const radius=Math.min(84,w*0.19,h*0.2), cx=24+radius,cy=h-24-radius, scale=.145;

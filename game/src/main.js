@@ -17,6 +17,8 @@ import { createPopups, updatePopups, drawPopups, spawnPopup } from './popups.js'
 import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js';
 import { createFuelState, updateFuel, drawFuelWorld } from './fuel.js';
 import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
+import { createRep } from './rep.js';
+import { drawPerformer } from './performer.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -37,6 +39,7 @@ export const game = {
   audio, vehicleEffects: createVehicleEffects(), popups: createPopups(), race: createRace(),
   fuel: createFuelState(),
   rampage: createRampage(),
+  rep: createRep(),
 };
 canvas.addEventListener('pointerdown',()=>{audio.unlock();if(game.missions?.dialogue)game.dialogueClick=true;});
 window.addEventListener('keydown', event => { audio.unlock(); if (event.code === 'KeyM' && !event.repeat) audio.toggleMute(); });
@@ -107,7 +110,7 @@ function respawn(){
 window.addEventListener('keydown',event=>{if(game.outcome&&!event.repeat){event.preventDefault();respawn();}});
 let helpReturn = 'menu';
 function setState(state) {
-  if(state==='paused'&&game.missions){game.save=writeSave(game,game.missions);document.getElementById('progress').textContent=`Jobs ${game.missions.completed.length}/5 · Umbrellas ${game.missions.collectibles.length}/12 · Taxi fares ${game.missions.taxiFares} · Total earned $${game.missions.totalEarned.toLocaleString()} · Best ${Object.entries(game.missions.bestTimes).map(([k,v])=>`${k}: ${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,'0')}`).join(', ')||'none'}`;}
+  if(state==='paused'&&game.missions){game.save=writeSave(game,game.missions);document.getElementById('progress').textContent=`Jobs ${game.missions.completed.length}/6 · Umbrellas ${game.missions.collectibles.length}/12 · Taxi fares ${game.missions.taxiFares} · Total earned $${game.missions.totalEarned.toLocaleString()} · Best ${Object.entries(game.missions.bestTimes).map(([k,v])=>`${k}: ${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,'0')}`).join(', ')||'none'}`;}
   game.state = state;
   for (const [id, mode] of [['menu','menu'],['pause','paused'],['help','help']]) document.getElementById(id).hidden = state !== mode;
   document.getElementById('status').textContent = state === 'playing' ? 'Explore Coral Bay as Dario Venn.' : `${state} screen`;
@@ -124,10 +127,11 @@ function startGame(foot = false, record=null) {
   if(shot)game.clockMinutes=SHOT_CLOCK;
   if(record){game.player.cash=record.cash; if(record.position){spawn.x=record.position.x;spawn.y=record.position.y;game.player.x=game.player.previousX=spawn.x;game.player.y=game.player.previousY=spawn.y;}}
   game.missions=createMissionState(record);game.save=record;
-  game.missions.marker=game.missions.currentMission<5?world.spawnPoints.diner:null;
-  if(game.missions.currentMission>=5)game.missions.objective='Story complete · Free roam in Coral Bay';
+  game.missions.marker=game.missions.currentMission<6?world.spawnPoints.diner:null;
+  if(game.missions.currentMission>=6||game.missions.completed.includes(5))game.missions.objective='Story complete · Free roam in Coral Bay';
+  else if(game.missions.currentMission===5)game.missions.objective='Meet Lena at the Marlin Diner · One last job';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.rep=createRep(record);game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -293,6 +297,7 @@ function frame(time) {
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view());
     drawHeliLight(ctx,game.police);
     for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p);
+    drawPerformer(ctx,game,time);
     for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time);
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view(),true);
     drawOfficers(ctx,game.police);

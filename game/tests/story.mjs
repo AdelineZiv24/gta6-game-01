@@ -10,11 +10,12 @@ import {drawHUD} from '../src/hud.js';
 import {createPopups} from '../src/popups.js';
 import {createRace,raceStartPoint} from '../src/race.js';
 import {createRampage,rampageStartPoint} from '../src/rampage.js';
+import {createRep} from '../src/rep.js';
 const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
 const input={wasPressed:k=>key===k,isDown:()=>false};
-function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
+function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),rep:createRep()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
 function tick(g,k=null,dt=.1){key=k;updateMissions(g.missions,g,dt,input,g.cars,{});key=null;}
 function at(g,p,car=false){if(car){g.vehicle??=createCar(p.x,p.y,0,0,'#777','player-driven');Object.assign(g.vehicle,{x:p.x,y:p.y});}else g.vehicle=null;Object.assign(g.player,{x:p.x,y:p.y});}
 function talk(g){let n=10;while(g.missions.dialogue&&n--)tick(g,'KeyE');assert(n>0);}
@@ -83,3 +84,33 @@ for(const [width,height] of [[1280,800],[800,600],[390,800],[640,360],[640,720]]
  }
 }
 console.log('HUD safe bounds, panel separation, inherited name alignment at five viewport sizes: PASS');
+{
+ const g=fixture({currentMission:5,completed:[0,1,2,3,4]});begin(g);const s=g.missions;
+ assert.equal(s.currentMission,5);assert.equal(s.phase,'escape');assert.equal(s.checkpoints.length,5);assert.equal(g.wanted.stars,3);
+ for(let k=0;k<5;k++){at(g,s.checkpoints[s.checkpoint],true);tick(g);if(k===1)assert.equal(g.wanted.stars,4);if(k===3)assert.equal(g.wanted.stars,5);}
+ assert(s.completed.includes(5));assert.equal(s.activity,null);assert.equal(s.currentMission,6);
+ assert.equal(s.splash.name,'Pier Escape');assert.equal(s.splash.reward,6000);assert.equal(s.splash.total,g.player.cash);
+ assert.equal(s.completion?.title,'PIER ESCAPE · STORY COMPLETE');assert.equal(g.rep.xp,100);
+ talk(g);tick(g,'KeyE');assert.equal(s.completion,null);
+}
+console.log('Pier Escape finale chain, wanted escalation, completion screen: PASS');
+{
+ const g=fixture({currentMission:5,completed:[0,1,2,3,4]});begin(g);g.police.arrest=1;tick(g);assert(g.missions.retry);talk(g);begin(g);assert.equal(g.missions.activity,'mission');assert.equal(g.missions.currentMission,5);
+ const t=fixture({currentMission:5,completed:[0,1,2,3,4]});begin(t);tick(t,null,MISSIONS[5].time+1);assert(t.missions.retry);
+}
+console.log('Pier Escape busted/timer failure + retry: PASS');
+{
+ const g=fixture({currentMission:3});begin(g);const s=g.missions;g.vehicle=s.van;g.vehicle.driver='player-driven';
+ for(const p of s.stops){at(g,p,true);tick(g);}
+ assert(s.completed.includes(3));assert.equal(g.rep.xp,130);
+ const c=fixture();at(c,c.missions.umbrellas[0]);tick(c);assert.deepEqual(c.missions.collectibles,[0]);assert.equal(c.rep.xp,15);
+ const t=fixture({currentMission:5,completed:[0,1,2,3,4]});startTaxi(t.missions,t);talk(t);at(t,t.missions.taxiStart,true);tick(t);talk(t);at(t,t.missions.taxiTarget,true);tick(t);assert.equal(t.missions.taxiFares,1);assert.equal(t.rep.xp,10);
+}
+console.log('REP gains from deposits, collectibles and taxi fares: PASS');
+{
+ const g=fixture({currentMission:5,completed:[0,1,2,3,4,5]});g.rep.xp=250;writeSave(g,g.missions);const saved=loadSave();
+ assert.equal(saved.rep.xp,250);assert.deepEqual(saved.completed,[0,1,2,3,4,5]);assert.equal(saved.currentMission,5);
+ data.set('coral-bay-heat-save',JSON.stringify({version:1,cash:50,completed:[0,1],currentMission:2}));
+ const legacy=loadSave();assert.deepEqual(legacy.rep,{xp:0});assert.equal(legacy.cash,50);
+}
+console.log('Save round trip with REP, finale indices, legacy default: PASS');

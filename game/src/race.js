@@ -1,5 +1,6 @@
 import { createCar, updateCar } from './vehicles.js';
 import { spawnPopup } from './popups.js';
+import { awardRep, REP_RACE_WIN, REP_RACE_FINISH } from './rep.js';
 import { FONT } from './config.js';
 
 export const RACE_PRIZE = 600;
@@ -51,6 +52,7 @@ function finishRace(race,g,win) {
     state.splash={name:win?'STREET RACE':'STREET RACE · OUTRUN',reward:win?RACE_PRIZE:0,total:g.player.cash,until:(g.playSeconds||0)+2.8};
     state.activity=null;state.marker=null;state.objective=win?'Street race won · +$600':'Street race lost · the rival took it';
   }
+  awardRep(g, win ? REP_RACE_WIN : REP_RACE_FINISH);
   spawnPopup(g.popups,focus.x,focus.y-44,win?'+$600 RACE WIN':'OUTRUN · NO PRIZE',win?'#8df0a5':'#ef826c');
   if(race.rival){race.rival.driver='parked';race.rival.speed=0;}
 }

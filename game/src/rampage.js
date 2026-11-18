@@ -1,4 +1,5 @@
 import { spawnPopup } from './popups.js';
+import { awardRep, REP_RAMPAGE_CAP } from './rep.js';
 import { FONT } from './config.js';
 
 export const RAMPAGE_TIME = 60;
@@ -45,6 +46,7 @@ function finishRampage(rampage,g) {
     state.splash={name:'RAMPAGE',reward:payout,total:g.player.cash,until:(g.playSeconds||0)+2.8};
     state.activity=null;state.marker=null;state.objective=`Rampage over · ${score} pts`;
   }
+  const repGain = Math.min(REP_RAMPAGE_CAP, Math.floor(score / 10)); if(repGain > 0) awardRep(g, repGain);
   spawnPopup(g.popups,focus.x,focus.y-44,`RAMPAGE ${score} PTS${payout>0?` · +$${payout}`:''}`,'#ffe16d');
 }
 
