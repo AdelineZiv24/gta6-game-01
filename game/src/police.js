@@ -2,7 +2,7 @@ import { createCar, carBlocked, emitVehicleImpact } from './vehicles.js';
 import { hasSight } from './wanted.js';
 import { angleDifference } from './random.js';
 
-export function createPolice(){return {units:[],heli:null,spawnTimer:0,arrest:0,nextId:0};}
+export function createPolice(){return {units:[],heli:null,spawnTimer:0,arrest:0,nextId:0,roadblock:null,roadblockLast:-1e9};}
 export function spawnHeli(police,x,y){
   police.heli={x,y,heading:0,rotor:0};
   return police.heli;
@@ -11,6 +11,20 @@ export function spawnPolice(police,x,y,heading=0,interceptor=false){
   const car=createCar(x,y,heading,1,interceptor?'#243f50':'#f2f3e7','police-driven');car.police=true;car.interceptor=interceptor;car.model={...car.model,name:interceptor?'CBPD Interceptor':'CBPD Patrol'};
   const id=++police.nextId;
   const unit={id,callsign:interceptor?`INT-${id}`:`CB-${String(id).padStart(2,'0')}`,x,y,car,health:100,onFoot:false,down:false,lost:0,life:24,fireTimer:1,hostile:false,waypoint:null};police.units.push(unit);return unit;
+}
+export function placeRoadblock(police,world,x,y,dir,now){
+  const px=-Math.sin(dir),py=Math.cos(dir);
+  const specs=[{off:22,heading:dir+Math.PI/2-.45},{off:-22,heading:dir-Math.PI/2+.45}];
+  const cars=[];
+  for(const spec of specs){
+    const cx=x+px*spec.off,cy=y+py*spec.off;
+    if(world.collidesCircle(cx,cy,15))return null;
+    const car=createCar(cx,cy,spec.heading,1,'#f2f3e7','parked');car.police=true;car.model={...car.model,name:'CBPD Patrol'};
+    cars.push(car);
+  }
+  police.roadblock={x,y,dirX:Math.cos(dir),dirY:Math.sin(dir),placedAt:now,cars};
+  police.roadblockLast=now;
+  return police.roadblock;
 }
 function nearest(list,value,key){return list.reduce((a,b)=>Math.abs(b[key]-value)<Math.abs(a[key]-value)?b:a);}
 // A modest grid route: join the nearest intersection, then follow road axes.
@@ -45,6 +59,18 @@ export function updatePolice(police,game,world,camera,dt,fire){
     heli.lightX+=(focus.x-heli.lightX)*follow;
     heli.lightY+=(focus.y-heli.lightY)*follow;
   }else police.heli=null;
+  const rb=police.roadblock;
+  if(rb){
+    const along=(focus.x-rb.x)*rb.dirX+(focus.y-rb.y)*rb.dirY;
+    if(w.stars<4||along>400||game.playSeconds-rb.placedAt>=25)police.roadblock=null;
+  }
+  if(!police.roadblock&&w.stars>=4&&game.vehicle&&game.playSeconds-(police.roadblockLast??-1e9)>=20){
+    const v=game.vehicle,speed=Math.hypot(v.vx,v.vy),dir=speed>30?Math.atan2(v.vy,v.vx):v.heading;
+    let bx=focus.x+Math.cos(dir)*620,by=focus.y+Math.sin(dir)*620;
+    if(Math.abs(Math.cos(dir))>=Math.abs(Math.sin(dir)))by=nearest(world.roads.horizontal,by,'y').y;
+    else bx=nearest(world.roads.vertical,bx,'x').x;
+    if(bx>80&&bx<4240&&by>80&&by<world.water.y-40)placeRoadblock(police,world,bx,by,dir,game.playSeconds);
+  }
   police.spawnTimer-=dt;
   if(w.stars&&police.units.length<Math.min(7,w.stars+1)&&police.spawnTimer<=0){
     police.spawnTimer=4;

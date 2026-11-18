@@ -17,7 +17,7 @@ const before=writes;location.search='?shot=mission';const shot=await import('../
 const {createWorld,updateBoats}=await import('../src/world.js');
 const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar,MODELS,drawCar,headlightLevel}=await import('../src/vehicles.js');
 const {createTraffic}=await import('../src/traffic.js');
-const {createPolice,spawnPolice,spawnHeli,updatePolice}=await import('../src/police.js');
+const {createPolice,spawnPolice,spawnHeli,updatePolice,placeRoadblock}=await import('../src/police.js');
 const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
 const {createRace,buildRoute,buildHarborRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
 const {createFuelState,updateFuel,gasStations}=await import('../src/fuel.js');
@@ -25,6 +25,8 @@ const {createRampage,startRampage,updateRampage,rampageStartPoint,rampageBeachPo
 const {createFishing,startFishing,updateFishing,fishingPoint,pickFish,FISH_SPECIES,FISHING_WINDOW}=await import('../src/fishing.js');
 const {createCourier,startCourier,updateCourier,courierStartPoint,courierDoors,courierTimeLimit,courierPayout,COURIER_MIN_DISTANCE}=await import('../src/courier.js');
 const {stuntRamps,stuntLaunch,updateStunt,STUNT_AIR_TIME,STUNT_PRIZE}=await import('../src/stunt.js');
+const {createWanted,setWanted,createEscape,updateEscape,escapeBonus}=await import('../src/wanted.js');
+const {createDrift,updateDrift}=await import('../src/drift.js');
 const {GULL_COUNT,gullPosition,drawGulls}=await import('../src/gulls.js');
 const {districtTint}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians,drawPedestrian}=await import('../src/pedestrians.js');
@@ -222,6 +224,48 @@ spawnHeli(csPolice,500,lane);
 assert.equal(responseRows(csGame).find(row=>row.type==='HELI')?.callsign,'AIR-1');
 console.log('Stable ground and air callsigns: PASS');
 
+function roadblockFixture(stars=4){const pg={wanted:createWanted(),player:null,vehicle:null,police:createPolice(),playSeconds:0};const car=createCar(seeded.roads.vertical[3].x,seeded.roads.horizontal[3].y+20,0,3,undefined,'player-driven');car.vx=165;car.speed=165;pg.vehicle=car;pg.player={x:car.x,y:car.y,cash:0,health:100};pg.police.spawnTimer=99;setWanted(pg.wanted,stars,car);return pg;}
+const rbCamera={x:1682,y:1462,width:1100,height:720};
+{
+ const pg=roadblockFixture(4);updatePolice(pg.police,pg,seeded,rbCamera,1/60,()=>{});const rb=pg.police.roadblock;assert(rb);assert.equal(rb.cars.length,2);assert(rb.cars.every(car=>car.police&&car.speed===0));
+ assert.equal(rb.x,pg.vehicle.x+620);assert.equal(rb.y,seeded.roads.horizontal[3].y);
+ assert(Math.abs(rb.cars[0].heading-(Math.PI/2-.45))<1e-9);assert(Math.abs(rb.cars[1].heading+(Math.PI/2-.45))<1e-9);
+ assert(!seeded.collidesCircle(rb.cars[0].x,rb.cars[0].y,12));assert(!seeded.collidesCircle(rb.cars[1].x,rb.cars[1].y,12));
+ const low=roadblockFixture(3);updatePolice(low.police,low,seeded,rbCamera,1/60,()=>{});assert.equal(low.police.roadblock,null);
+ const foot=roadblockFixture(5);foot.vehicle=null;updatePolice(foot.police,foot,seeded,rbCamera,1/60,()=>{});assert.equal(foot.police.roadblock,null);
+}
+console.log('Roadblock spawns only at wanted >= 4 while driving: PASS');
+{
+ const pg2=roadblockFixture(4);updatePolice(pg2.police,pg2,seeded,rbCamera,1/60,()=>{});const first=pg2.police.roadblock;assert(first);
+ for(let i=0;i<30;i++)updatePolice(pg2.police,pg2,seeded,rbCamera,1/60,()=>{});
+ assert.equal(pg2.police.roadblock,first);assert.equal(pg2.police.roadblock.cars.length,2);
+ pg2.vehicle.x+=1100;pg2.playSeconds=5;updatePolice(pg2.police,pg2,seeded,rbCamera,1/60,()=>{});assert.equal(pg2.police.roadblock,null);
+ updatePolice(pg2.police,pg2,seeded,rbCamera,1/60,()=>{});assert.equal(pg2.police.roadblock,null);
+ pg2.playSeconds=19.9;updatePolice(pg2.police,pg2,seeded,rbCamera,1/60,()=>{});assert.equal(pg2.police.roadblock,null);
+ pg2.playSeconds=20.1;updatePolice(pg2.police,pg2,seeded,rbCamera,1/60,()=>{});assert(pg2.police.roadblock);
+}
+console.log('Roadblock single placement and cooldown: PASS');
+{
+ const da=roadblockFixture(4);updatePolice(da.police,da,seeded,rbCamera,1/60,()=>{});assert(da.police.roadblock);setWanted(da.wanted,2,da.vehicle);updatePolice(da.police,da,seeded,rbCamera,1/60,()=>{});assert.equal(da.police.roadblock,null);
+ const db=roadblockFixture(4);updatePolice(db.police,db,seeded,rbCamera,1/60,()=>{});assert(db.police.roadblock);db.vehicle.x+=1100;updatePolice(db.police,db,seeded,rbCamera,1/60,()=>{});assert.equal(db.police.roadblock,null);
+ const dc=roadblockFixture(4);updatePolice(dc.police,dc,seeded,rbCamera,1/60,()=>{});assert(dc.police.roadblock);dc.playSeconds=25;dc.vehicle=null;updatePolice(dc.police,dc,seeded,rbCamera,1/60,()=>{});assert.equal(dc.police.roadblock,null);
+}
+console.log('Roadblock despawns on wanted drop, pass-by and timeout: PASS');
+{
+ const pg4=roadblockFixture(4);updatePolice(pg4.police,pg4,seeded,rbCamera,1/60,()=>{});const blockRow=responseRows(pg4).find(r=>r.callsign==='BLOCK');
+ assert(blockRow);assert.equal(blockRow.type,'ROADBLOCK');assert.equal(blockRow.state,'AHEAD');assert.equal(blockRow.distance,620);
+ pg4.police.roadblock=null;assert(!responseRows(pg4).some(r=>r.callsign==='BLOCK'));
+}
+console.log('Response rows carry the roadblock entry: PASS');
+{
+ const pg5=roadblockFixture(4);updatePolice(pg5.police,pg5,seeded,rbCamera,1/60,()=>{});const block=pg5.police.roadblock,before=block.cars.map(car=>({x:car.x,y:car.y}));
+ for(let i=0;i<30;i++)updatePolice(pg5.police,pg5,seeded,rbCamera,1/60,()=>{});
+ block.cars.forEach((car,i)=>{assert.equal(car.x,before[i].x);assert.equal(car.y,before[i].y);assert.equal(car.speed,0);});
+ const rammer=createCar(block.cars[0].x-10,block.cars[0].y,0,3,undefined,'player-driven');rammer.vx=160;resolveCarContacts([rammer,block.cars[0]],()=>({}),0,null);
+ assert.equal(block.cars[0].x,before[0].x);assert.equal(block.cars[0].y,before[0].y);assert(Math.hypot(rammer.x-block.cars[0].x,rammer.y-block.cars[0].y)>20);
+}
+console.log('Roadblock cars are solid and take no pursuit actions: PASS');
+
 {
  const start=raceStartPoint(seeded),route=buildRoute(seeded);
  assert.equal(route.length,5);assert.deepEqual(route[4],start);
@@ -317,6 +361,47 @@ console.log('Rampage beach start has its own ring set: PASS');
 }
 console.log('Stunt ramps launch, fly, pay out and splash down: PASS');
 
+function driftFixture(){const dg={world:seeded,player:{x:1682,y:1462,cash:0,health:100},vehicle:null,missions:{activity:null,totalEarned:0,splash:null},popups:createPopups(),playSeconds:0,rep:createRep()};dg.vehicle=createCar(1682,1462,0,3,undefined,'player-driven');dg.vehicle.vx=200*Math.cos(.6);dg.vehicle.vy=200*Math.sin(.6);return dg;}
+const spaceDown={isDown:k=>k==='Space'},noKeys={isDown:()=>false};
+{
+ const drift=createDrift(),dg=driftFixture();for(let i=0;i<4;i++)updateDrift(drift,dg,0.1,spaceDown);assert.equal(drift.chain,1);
+ for(let i=0;i<12;i++)updateDrift(drift,dg,0.1,spaceDown);assert.equal(drift.chain,2);assert(dg.popups.list.some(entry=>entry.text==='DRIFT ×2'));
+ const calm=createDrift(),cg=driftFixture();for(let i=0;i<10;i++)updateDrift(calm,cg,0.1,noKeys);assert.equal(calm.chain,0);assert.equal(calm.time,0);
+ const straight=createDrift(),sg=driftFixture();sg.vehicle.vy=0;for(let i=0;i<10;i++)updateDrift(straight,sg,0.1,spaceDown);assert.equal(straight.chain,0);
+}
+console.log('Drift chain builds per sustained segment: PASS');
+{
+ const drift7=createDrift(),dg7=driftFixture();for(let i=0;i<16;i++)updateDrift(drift7,dg7,0.1,spaceDown);assert.equal(drift7.chain,2);
+ updateDrift(drift7,dg7,0.1,noKeys);assert.equal(drift7.pending,2);assert.equal(drift7.chain,0);assert.equal(dg7.player.cash,0);
+ for(let i=0;i<8&&dg7.player.cash===0;i++)updateDrift(drift7,dg7,0.1,noKeys);
+ assert.equal(dg7.player.cash,30);assert.equal(dg7.missions.totalEarned,30);assert.equal(dg7.rep.xp,4);assert(dg7.popups.list.some(entry=>entry.text==='DRIFT +$30'));
+ for(let i=0;i<5;i++)updateDrift(drift7,dg7,0.1,noKeys);assert.equal(dg7.player.cash,30);
+}
+console.log('Drift pays $15 x chain and REP x2 x chain exactly once: PASS');
+{
+ const drift8=createDrift(),dg8=driftFixture();for(let i=0;i<8;i++)updateDrift(drift8,dg8,0.1,spaceDown);assert.equal(drift8.chain,1);
+ dg8.vehicle.health=80;updateDrift(drift8,dg8,0.1,spaceDown);assert.equal(drift8.chain,0);assert.equal(drift8.time,0);assert(dg8.popups.list.some(entry=>entry.text==='DRIFT LOST'));
+ for(let i=0;i<10;i++)updateDrift(drift8,dg8,0.1,noKeys);assert.equal(dg8.player.cash,0);
+ const grace=createDrift(),gg=driftFixture();for(let i=0;i<8;i++)updateDrift(grace,gg,0.1,spaceDown);updateDrift(grace,gg,0.1,noKeys);assert.equal(grace.pending,1);
+ gg.vehicle.health=70;updateDrift(grace,gg,0.1,noKeys);assert.equal(grace.pending,0);
+ for(let i=0;i<8;i++)updateDrift(grace,gg,0.1,noKeys);assert.equal(gg.player.cash,0);assert.equal(gg.rep.xp,0);
+}
+console.log('Drift impacts void the pending payout: PASS');
+
+function escapeFixture(){return {wanted:createWanted(),player:{x:1682,y:1462,cash:0,health:100},vehicle:null,missions:{activity:null,totalEarned:0,splash:null},police:{arrest:0},popups:createPopups(),rep:createRep(),playSeconds:0,outcome:null};}
+{
+ const esc=createEscape(),eg=escapeFixture();setWanted(eg.wanted,4,eg.player);updateEscape(esc,eg);assert.equal(esc.peak,4);
+ setWanted(eg.wanted,5,eg.player);updateEscape(esc,eg);assert.equal(esc.peak,5);
+ eg.wanted.stars=2;updateEscape(esc,eg);assert.equal(esc.peak,5);
+ eg.wanted.stars=0;assert.equal(updateEscape(esc,eg),250);assert.equal(eg.player.cash,250);assert.equal(eg.missions.totalEarned,250);assert.equal(eg.rep.xp,50);
+ assert.equal(eg.missions.splash?.name,'ESCAPED');assert.equal(eg.missions.splash?.reward,250);assert.equal(esc.peak,0);assert.equal(escapeBonus(3),150);
+ const bust=createEscape(),bg=escapeFixture();setWanted(bg.wanted,4,bg.player);updateEscape(bust,bg);bg.outcome={kind:'busted'};bg.wanted.stars=0;assert.equal(updateEscape(bust,bg),0);assert.equal(bg.player.cash,0);assert.equal(bg.missions.splash,null);
+ const low=createEscape(),lg=escapeFixture();setWanted(lg.wanted,2,lg.player);updateEscape(low,lg);lg.wanted.stars=0;assert.equal(updateEscape(low,lg),0);assert.equal(lg.player.cash,0);
+ const again=createEscape(),ag=escapeFixture();setWanted(ag.wanted,3,ag.player);updateEscape(again,ag);ag.wanted.stars=0;assert.equal(updateEscape(again,ag),150);
+ setWanted(ag.wanted,4,ag.player);updateEscape(again,ag);assert.equal(again.peak,4);ag.wanted.stars=0;assert.equal(updateEscape(again,ag),200);assert.equal(ag.player.cash,350);
+}
+console.log('ESCAPED payoff, exclusions and peak reset: PASS');
+
 const {updateTraffic}=await import('../src/traffic.js');
 const stagedCar=createCar(1000,lane,0,1,undefined,'traffic-driven');stagedCar.speed=92;
 updateTraffic({cars:[stagedCar],timer:1},seeded,playerCar,[stagedCar],[],1/60,()=>{});
@@ -344,6 +429,8 @@ for(const scene of ['start','mission','foot','chase','cover']){
   const coverRows=responseRows(staged);
   assert(coverRows.every(row=>typeof row.callsign==='string'&&row.callsign.length>0));
   assert(coverRows.some(row=>row.callsign==='AIR-1'));assert(coverRows.some(row=>row.callsign.startsWith('INT-')));
+  assert(staged.police.roadblock);assert.equal(staged.police.roadblock.cars.length,2);assert(staged.police.roadblock.cars.every(car=>car.police));
+  assert(coverRows.some(row=>row.callsign==='BLOCK'&&row.type==='ROADBLOCK'&&row.state==='AHEAD'));
  }
  console.log(`Seed=1 ${scene} scene: 180 frames, pinned clock, finite actors PASS`);
 }

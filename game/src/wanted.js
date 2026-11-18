@@ -1,3 +1,4 @@
+import { awardRep, REP_ESCAPE } from './rep.js';
 // Shared visibility check: a segment must not intersect any building rectangle.
 export function hasSight(world, a, b, range = 420) {
   if (Math.hypot(a.x-b.x,a.y-b.y)>range) return false;
@@ -29,4 +30,23 @@ export function updateWanted(w,world,player,crimes,witnesses,units,time,dt){
   if(time-w.lastCrime>12){w.heat=Math.max(0,w.heat-dt*.12);w.stars=Math.ceil(w.heat/25);}
   if(w.seen)w.evade=0;
   else if(time-w.lastCrime>3){w.evade+=dt/(18+w.stars*3);if(w.evade>=1){w.stars--;w.heat=w.stars*25;w.evade=0;}}
+}
+export function createEscape(){return {peak:0,prev:0};}
+export function escapeBonus(peak){return 50*peak;}
+export function updateEscape(escape,game){
+  if(!escape||!game?.wanted)return 0;
+  const stars=game.wanted.stars;
+  if(stars>0){escape.peak=escape.prev===0?stars:Math.max(escape.peak,stars);}
+  else if(escape.prev>0){
+    const peak=escape.peak;escape.peak=0;
+    if(peak>=3&&!game.outcome&&(game.police?.arrest??0)<1&&(game.player?.health??0)>0){
+      const bonus=escapeBonus(peak);
+      game.player.cash+=bonus;if(game.missions)game.missions.totalEarned+=bonus;
+      const s=game.missions;
+      if(s&&(!s.splash||(game.playSeconds||0)>=(s.splash.until||0)))s.splash={header:'WANTED CLEARED',name:'ESCAPED',reward:bonus,total:game.player.cash,until:(game.playSeconds||0)+2.8};
+      awardRep(game,REP_ESCAPE*peak);
+      escape.prev=0;return bonus;
+    }
+  }
+  escape.prev=stars;return 0;
 }

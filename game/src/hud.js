@@ -15,6 +15,7 @@ export function responseRows(game) {
     state: unit.down||unit.health<=0||unit.car.health<=0?'DISABLED':seen?'PURSUIT':'SEARCHING',
   }));
   if(game.police.heli)rows.push({callsign:'AIR-1',type:'HELI',distance:distanceTo(game.police.heli),state:seen?'SPOTLIGHT':'SEARCHING'});
+  if(game.police.roadblock)rows.push({callsign:'BLOCK',type:'ROADBLOCK',distance:distanceTo(game.police.roadblock),state:'AHEAD'});
   return rows.sort((first,second)=>first.distance-second.distance);
 }
 
@@ -160,6 +161,8 @@ export function drawHUD(ctx, game) {
   if(opacity>0&&!game.missions?.dialogue&&w>1000){ctx.globalAlpha=opacity;panel(cx+radius+18,h-68,Math.min(360,w-cx-radius-38),44);ctx.textAlign='left';ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText('WASD / Arrows  Move   •   Shift  Sprint   •   P  Pause',cx+radius+30,h-46,Math.max(0,w-cx-radius-62));}
   const popup=game.vehicleEffects?.popup;
   if(popup&&game.vehicleEffects.time<popup.until){ctx.save();ctx.globalAlpha=Math.min(1,(popup.until-game.vehicleEffects.time)/.3);ctx.textAlign='center';ctx.font=`bold 30px ${FONT}`;ctx.fillStyle='#ffe16d';ctx.strokeStyle='#173d46';ctx.lineWidth=5;ctx.strokeText(popup.text,w/2,h*.30);ctx.fillText(popup.text,w/2,h*.30);ctx.restore();}
+  const drift=game.drift;
+  if(drift&&drift.chain>0&&game.vehicle){ctx.save();ctx.textAlign='center';ctx.font=`bold 22px ${FONT}`;ctx.fillStyle='#7be3f0';ctx.strokeStyle='#173d46';ctx.lineWidth=4;ctx.strokeText(`DRIFT ×${drift.chain}`,w/2,h*.30+44);ctx.fillText(`DRIFT ×${drift.chain}`,w/2,h*.30+44);ctx.restore();}
   if(combat?.flash>0){ctx.fillStyle=`rgba(232,65,55,${combat.flash*.65})`;ctx.fillRect(0,0,w,h);}
   if(game.outcome){ctx.fillStyle='#092731df';ctx.fillRect(0,0,w,h);ctx.textAlign='center';ctx.fillStyle=game.outcome.kind==='busted'?'#71d3d9':'#ef826c';ctx.font=`900 64px ${FONT}`;ctx.fillText(game.outcome.kind.toUpperCase(),w/2,h/2-50);ctx.fillStyle='#fff3dc';ctx.font=`18px ${FONT}`;ctx.fillText(`${game.outcome.kind==='busted'?'Police fine':'Hospital bill'}: $${game.outcome.bill}`,w/2,h/2+12);ctx.font=`14px ${FONT}`;ctx.fillText('Press any key to continue',w/2,h/2+58);}
   ctx.restore();

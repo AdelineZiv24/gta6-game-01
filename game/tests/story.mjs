@@ -4,19 +4,20 @@ import {createWorld} from '../src/world.js';
 import {createPlayer} from '../src/player.js';
 import {createCar,carBlocked,resolveCarContacts,MODELS} from '../src/vehicles.js';
 import {createCombat,grantPistol} from '../src/combat.js';
-import {createWanted} from '../src/wanted.js';
+import {createWanted,createEscape} from '../src/wanted.js';
 import {writeSave,loadSave} from '../src/save.js';
 import {drawHUD} from '../src/hud.js';
 import {createPopups} from '../src/popups.js';
 import {createRace,raceStartPoint} from '../src/race.js';
 import {createRampage,rampageStartPoint,rampageBeachPoint} from '../src/rampage.js';
 import {createCourier,courierStartPoint} from '../src/courier.js';
+import {createDrift} from '../src/drift.js';
 import {createRep} from '../src/rep.js';
 const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
 const input={wasPressed:k=>key===k,isDown:()=>false};
-function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),courier:createCourier(),rep:createRep()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
+function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),courier:createCourier(),drift:createDrift(),escape:createEscape(),rep:createRep()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
 function tick(g,k=null,dt=.1){key=k;updateMissions(g.missions,g,dt,input,g.cars,{});key=null;}
 function at(g,p,car=false){if(car){g.vehicle??=createCar(p.x,p.y,0,0,'#777','player-driven');Object.assign(g.vehicle,{x:p.x,y:p.y});}else g.vehicle=null;Object.assign(g.player,{x:p.x,y:p.y});}
 function talk(g){let n=10;while(g.missions.dialogue&&n--)tick(g,'KeyE');assert(n>0);}
@@ -88,6 +89,15 @@ console.log('Rampage beach start input: PASS');
  assert(texts.some(t=>t==='COURIER'));assert(texts.some(t=>t.startsWith('DROP ')));
 }
 console.log('Courier HUD panel renders while a run is live: PASS');
+
+{
+ const g=fixture({currentMission:5,completed:[0,1,2,3,4]});at(g,raceStartPoint(world),true);g.drift.chain=2;
+ const texts=[],st={textAlign:'center'};const canvas=new Proxy({measureText:t=>({width:t.length*7}),save(){},restore(){},setTransform(){},roundRect(){},fillText(t){texts.push(t);}},{get:(o,k)=>k in o?o[k]:st[k]??(()=>{}),set:(o,k,v)=>(st[k]=v,true)});
+ Object.assign(g,{width:1280,height:800,pixelRatio:1,minimap:{},objective:{text:'Objective'}});drawHUD(canvas,g);
+ assert(texts.some(t=>t==='DRIFT ×2'));
+ g.drift.chain=0;texts.length=0;drawHUD(canvas,g);assert(!texts.some(t=>t.startsWith('DRIFT')));
+}
+console.log('Drift chain readout renders next to the near-miss popup: PASS');
 
 {
  const g=fixture({currentMission:0});begin(g);at(g,g.missions.marker,true);g.vehicle.fuel=10;tick(g);assert.equal(g.vehicle.fuel,40);
