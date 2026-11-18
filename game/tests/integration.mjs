@@ -19,10 +19,12 @@ const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,res
 const {createTraffic}=await import('../src/traffic.js');
 const {createPolice,spawnPolice,spawnHeli,updatePolice}=await import('../src/police.js');
 const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
-const {createRace,buildRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
+const {createRace,buildRoute,buildHarborRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
 const {createFuelState,updateFuel,gasStations}=await import('../src/fuel.js');
-const {createRampage,startRampage,updateRampage,rampageStartPoint,rampagePayout,RAMPAGE_TIME}=await import('../src/rampage.js');
+const {createRampage,startRampage,updateRampage,rampageStartPoint,rampageBeachPoint,rampageSpots,rampagePayout,RAMPAGE_TIME}=await import('../src/rampage.js');
 const {createFishing,startFishing,updateFishing,fishingPoint,pickFish,FISH_SPECIES,FISHING_WINDOW}=await import('../src/fishing.js');
+const {createCourier,startCourier,updateCourier,courierStartPoint,courierDoors,courierTimeLimit,courierPayout,COURIER_MIN_DISTANCE}=await import('../src/courier.js');
+const {stuntRamps,stuntLaunch,updateStunt,STUNT_AIR_TIME,STUNT_PRIZE}=await import('../src/stunt.js');
 const {GULL_COUNT,gullPosition,drawGulls}=await import('../src/gulls.js');
 const {districtTint}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians,drawPedestrian}=await import('../src/pedestrians.js');
@@ -260,8 +262,16 @@ console.log('Stable ground and air callsigns: PASS');
  const downtown={x:(seeded.roads.vertical[3].x+seeded.roads.vertical[4].x)/2,y:(seeded.roads.horizontal[2].y+seeded.roads.horizontal[3].y)/2};
  const downtownTint=districtTint(downtown.x,downtown.y,seeded),docksTint=districtTint(seeded.pier.x-100,seeded.roads.horizontal[6].y+100,seeded),residentialTint=districtTint(500,400,seeded);
  assert.equal(districtTint(downtown.x,downtown.y,seeded),downtownTint);assert.notEqual(downtownTint,null);assert.notEqual(docksTint,null);assert.notEqual(docksTint,downtownTint);assert.equal(districtTint(2000,3150,seeded),null);assert.notEqual(residentialTint,null);assert.notEqual(residentialTint,downtownTint);
+ const harbor=buildHarborRoute(seeded);assert.equal(harbor.length,5);assert.deepEqual(harbor[4],raceStartPoint(seeded));
+ for(const point of harbor){assert(seeded.roads.vertical.some(road=>road.x===point.x));assert(seeded.roads.horizontal.some(road=>road.y===point.y));}
+ const altRace=createRace(),altG=raceFixture();assert.equal(startRace(altRace,altG),true);assert.equal(altRace.routeName,'BEACH LOOP');assert.deepEqual(altRace.checkpoints,buildRoute(seeded));
+ altG.outcome={kind:'busted'};updateRace(altRace,altG,1/60);assert.equal(altRace.phase,'idle');altG.outcome=null;
+ assert.equal(startRace(altRace,altG),true);assert.equal(altRace.routeName,'HARBOR LOOP');assert.deepEqual(altRace.checkpoints,harbor);
+ altG.outcome={kind:'busted'};updateRace(altRace,altG,1/60);altG.outcome=null;
+ assert.equal(startRace(altRace,altG),true);assert.equal(altRace.routeName,'BEACH LOOP');
 }
 console.log('Street race lifecycle, rival nudge, district tints: PASS');
+console.log('Race routes alternate beach and harbor: PASS');
 
 function rampageFixture(){
  const rp={world:seeded,player:{...playerCar,cash:0},vehicle:null,parkedCars:[],missions:{activity:null,totalEarned:0,splash:null},popups:createPopups(),playSeconds:0,vehicleEffects:createVehicleEffects(),outcome:null};
@@ -285,6 +295,27 @@ function rampageFixture(){
  assert.equal(rampage.phase,'idle');assert.equal(aborted.missions.activity,null);assert.equal(aborted.player.cash,0);
 }
 console.log('Rampage lifecycle, stunts, rings, payouts and outcome abort: PASS');
+
+{
+ const beach=rampageBeachPoint(seeded);assert.deepEqual(beach,{x:seeded.roads.vertical[1].x,y:seeded.roads.horizontal[6].y});
+ const beachSpots=rampageSpots(seeded,beach);assert(beachSpots.length>=4);for(const spot of beachSpots){const d=Math.hypot(spot.x-beach.x,spot.y-beach.y);assert(d>200&&d<950);}
+ const beachRampage=createRampage(),beachG=rampageFixture();Object.assign(beachG.vehicle,beach);Object.assign(beachG.player,beach);
+ assert.equal(startRampage(beachRampage,beachG,beach),true);assert.deepEqual(beachRampage.start,beach);assert(beachSpots.some(spot=>spot.x===beachRampage.ring?.x&&spot.y===beachRampage.ring?.y));
+ const dtRampage=createRampage(),dtG=rampageFixture();assert.equal(startRampage(dtRampage,dtG),true);assert.deepEqual(dtRampage.start,rampageStartPoint(seeded));
+}
+console.log('Rampage beach start has its own ring set: PASS');
+
+{
+ const ramps=stuntRamps(seeded);assert.equal(ramps.length,3);for(const ramp of ramps){assert(!seeded.collidesCircle(ramp.x,ramp.y,12));assert(ramp.y<seeded.water.y);}
+ function stuntFixture(){const sg={world:seeded,player:{x:ramps[0].x,y:ramps[0].y,cash:0},vehicle:null,missions:{activity:null,totalEarned:0,splash:null},popups:createPopups(),playSeconds:0,rep:createRep()};sg.vehicle=createCar(ramps[0].x,ramps[0].y,0,3,undefined,'player-driven');return sg;}
+ const slowG=stuntFixture();slowG.vehicle.vx=100;updateStunt(slowG,0.016);assert(!slowG.vehicle.airT);
+ const sg=stuntFixture();sg.vehicle.vx=210;updateStunt(sg,0.016);assert(sg.vehicle.airT>0);
+ const noKeys={isDown:()=>false};let popupSeen=false;for(let i=0;i<10&&sg.vehicle.airT>0;i++){updateCar(sg.vehicle,noKeys,seeded,0.1,null);updateStunt(sg,0.1);if(sg.popups.list.some(entry=>entry.text==='STUNT JUMP'))popupSeen=true;}
+ assert.equal(sg.vehicle.airT,0);assert(popupSeen);assert.equal(sg.player.cash,STUNT_PRIZE);assert.equal(sg.missions.totalEarned,STUNT_PRIZE);assert.equal(sg.rep.xp,10);assert(sg.popups.list.some(entry=>entry.text==='STUNT +$50'));
+ const flyCar=createCar(ramps[0].x,ramps[0].y,0,3,undefined,'player-driven');const building=seeded.buildings[0];Object.assign(flyCar,{x:building.x+building.width/2,y:building.y+building.height/2});flyCar.vx=200;stuntLaunch(flyCar,ramps[0]);const flyX=flyCar.x;updateCar(flyCar,noKeys,seeded,0.1,null);assert(flyCar.x>flyX+15);assert.equal(flyCar.health,100);
+ const wetG=stuntFixture();Object.assign(wetG.vehicle,{x:4020,y:3350});wetG.vehicle.airT=STUNT_AIR_TIME;wetG.vehicle.stuntFrom={x:ramps[0].x,y:ramps[0].y};const wetCash=wetG.player.cash;updateStunt(wetG,0.016);assert.equal(wetG.vehicle.airT,0);assert.equal(wetG.vehicle.x,ramps[0].x);assert.equal(wetG.vehicle.y,ramps[0].y);assert.equal(wetG.player.cash,wetCash);
+}
+console.log('Stunt ramps launch, fly, pay out and splash down: PASS');
 
 const {updateTraffic}=await import('../src/traffic.js');
 const stagedCar=createCar(1000,lane,0,1,undefined,'traffic-driven');stagedCar.speed=92;
@@ -367,6 +398,25 @@ function toBite(fishing,fg){for(let i=0;i<40&&fishing.phase==='cast';i++)ftick(f
  const driveFishing=createFishing(),driveFg=fishingFixture();ftick(driveFishing,driveFg,0.016,'KeyE');driveFg.vehicle=createCar(fishPoint.x,fishPoint.y,0,1,undefined,'player-driven');ftick(driveFishing,driveFg,0.016);assert.equal(driveFishing.phase,'idle');assert.equal(driveFg.missions.activity,null);
 }
 console.log('Fishing start, cycle, catch, escape and abort paths: PASS');
+
+const doors=courierDoors(seeded);assert(doors.length>=8);assert.equal(new Set(doors.map(door=>door.name)).size,doors.length);
+for(const door of doors){assert(door.x>0&&door.x<4320&&door.y>0&&door.y<3300);assert(!seeded.collidesCircle(door.x,door.y,12));}
+assert.equal(courierTimeLimit(1200),65);assert.equal(courierTimeLimit(3000),125);
+assert.equal(courierPayout({timeLeft:0}),120);assert.equal(courierPayout({timeLeft:60}),360);assert.equal(courierPayout({timeLeft:-5}),120);
+console.log('Courier doors, countdown and payout maths: PASS');
+
+function courierFixture(){const cg={world:seeded,player:{x:courierStartPoint(seeded).x,y:courierStartPoint(seeded).y,cash:0},vehicle:null,parkedCars:[],missions:{activity:null,totalEarned:0,splash:null,objective:'',marker:null},popups:createPopups(),playSeconds:0,outcome:null,rep:createRep()};const start=courierStartPoint(seeded);cg.vehicle=createCar(start.x,start.y,0,3,undefined,'player-driven');return cg;}
+{
+ const courier=createCourier(),cg=courierFixture();cg.vehicle.fuel=5;assert.equal(startCourier(courier,cg),true);assert.equal(cg.vehicle.fuel,40);assert.equal(courier.phase,'running');assert.equal(cg.missions.activity,'courier');assert(courier.target);assert(courier.distance>=COURIER_MIN_DISTANCE);assert.equal(courier.timeLeft,courier.timeLimit);assert.equal(courier.timeLimit,courierTimeLimit(courier.distance));assert(cg.popups.list.some(entry=>entry.life>0&&entry.text==='COURIER RUSH · GO!'));
+ const footCourier=createCourier(),footCg=courierFixture();footCg.vehicle=null;assert.equal(startCourier(footCourier,footCg),false);assert.equal(footCourier.phase,'idle');
+ const busyCourier=createCourier(),busyCg=courierFixture();busyCg.missions.activity='race';assert.equal(startCourier(busyCourier,busyCg),false);
+ courier.timeLeft=50;Object.assign(cg.vehicle,courier.target);const cashBefore=cg.player.cash;updateCourier(courier,cg,0.1);assert.equal(courier.phase,'done');assert.equal(courier.result,'delivered');assert.equal(cg.player.cash,cashBefore+320);assert.equal(cg.missions.totalEarned,cg.player.cash);assert.equal(cg.rep.xp,15);assert.equal(cg.missions.splash?.name,'COURIER RUSH');assert.equal(cg.missions.splash?.reward,320);assert(cg.missions.activity===null);assert(cg.popups.list.some(entry=>entry.life>0&&entry.text==='DELIVERED · +$320'));
+ const expCourier=createCourier(),expCg=courierFixture();startCourier(expCourier,expCg);expCourier.timeLeft=0.05;const expCash=expCg.player.cash;updateCourier(expCourier,expCg,0.1);assert.equal(expCourier.phase,'done');assert.equal(expCourier.result,'expired');assert.equal(expCg.player.cash,expCash);assert.equal(expCg.missions.splash?.name,'COURIER · EXPIRED');assert.equal(expCg.missions.activity,null);assert(expCg.popups.list.some(entry=>entry.life>0&&entry.text==='EXPIRED · NO PENALTY'));
+ assert.equal(startCourier(expCourier,expCg),true);assert.equal(expCourier.phase,'running');assert.equal(expCourier.runs,2);
+ expCg.outcome={kind:'busted'};updateCourier(expCourier,expCg,1/60);assert.equal(expCourier.phase,'idle');assert.equal(expCg.missions.activity,null);
+ const outCourier=createCourier(),outCg=courierFixture();startCourier(outCourier,outCg);outCg.vehicle=null;updateCourier(outCourier,outCg,1/60);assert.equal(outCourier.phase,'idle');assert.equal(outCg.missions.activity,null);
+}
+console.log('Courier start, delivery, expiry, restart and abort paths: PASS');
 assert.equal(GULL_COUNT,6);
 for(let i=0;i<GULL_COUNT;i++){const a=gullPosition(i,5000),b=gullPosition(i,5000);assert.deepEqual(a,b);assert(a.x>0&&a.x<4320);assert(a.y>3050&&a.y<3420);}
 assert([0,1,2,3,4,5].some(i=>{const a=gullPosition(i,0),b=gullPosition(i,9000);return Math.hypot(a.x-b.x,a.y-b.y)>40;}));

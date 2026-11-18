@@ -9,8 +9,12 @@ export function rampageStartPoint(world) {
   return {x:world.roads.vertical[3].x,y:world.roads.horizontal[3].y};
 }
 
-export function rampageSpots(world) {
-  const start=rampageStartPoint(world),spots=[];
+export function rampageBeachPoint(world) {
+  return {x:world.roads.vertical[1].x,y:world.roads.horizontal[6].y};
+}
+
+export function rampageSpots(world,start=rampageStartPoint(world)) {
+  const spots=[];
   for(const {x} of world.roads.vertical)for(const {y} of world.roads.horizontal){
     const distance=Math.hypot(x-start.x,y-start.y);
     if(distance>200&&distance<950)spots.push({x,y});
@@ -19,19 +23,19 @@ export function rampageSpots(world) {
 }
 
 export function createRampage() {
-  return {phase:'idle',score:0,timeLeft:0,ring:null,ringIndex:0,spots:[],lastChain:0,result:null,resultUntil:0,payout:0};
+  return {phase:'idle',score:0,timeLeft:0,ring:null,ringIndex:0,spots:[],start:null,lastChain:0,result:null,resultUntil:0,payout:0};
 }
 
 export function rampagePayout(score) {
   return score>=2000?500:score>=1000?250:score>=400?100:score>0?25:0;
 }
 
-export function startRampage(rampage,g) {
+export function startRampage(rampage,g,startPoint) {
   if(!rampage||rampage.phase!=='idle'||!g.vehicle||!g.world||g.missions?.activity)return false;
   g.vehicle.fuel=Math.max(g.vehicle.fuel??100,40);
-  rampage.spots=rampageSpots(g.world);rampage.ringIndex=0;rampage.ring=rampage.spots[0]??null;
+  const start=startPoint||rampageStartPoint(g.world);rampage.start=start;rampage.spots=rampageSpots(g.world,start);rampage.ringIndex=0;rampage.ring=rampage.spots[0]??null;
   rampage.score=0;rampage.timeLeft=RAMPAGE_TIME;rampage.lastChain=0;rampage.result=null;rampage.payout=0;rampage.phase='running';
-  const state=g.missions,start=rampageStartPoint(g.world);
+  const state=g.missions;
   if(state){state.activity='rampage';state.objective='Rampage · hit the rings, chain near misses';state.marker=rampage.ring;}
   spawnPopup(g.popups,start.x,start.y-58,'RAMPAGE · GO!','#ef826c');
   return true;
@@ -88,9 +92,10 @@ export function drawRampageWorld(ctx,rampage,g,time) {
   ctx.save();ctx.textAlign='center';ctx.lineWidth=4;
   const pulse=1+Math.sin(time*.005)*.12;
   if(rampage.phase==='idle'){
-    const start=rampageStartPoint(g.world);
-    ctx.strokeStyle='#ef826ccc';ctx.fillStyle='#ef826c22';ctx.beginPath();ctx.ellipse(start.x,start.y+4,30*pulse,14*pulse,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-    ctx.font=`bold 13px ${FONT}`;ctx.strokeStyle='#173d46';ctx.fillStyle='#fff3dc';ctx.strokeText('RAMPAGE',start.x,start.y-26);ctx.fillText('RAMPAGE',start.x,start.y-26);
+    for(const start of [rampageStartPoint(g.world),rampageBeachPoint(g.world)]){
+      ctx.strokeStyle='#ef826ccc';ctx.fillStyle='#ef826c22';ctx.beginPath();ctx.ellipse(start.x,start.y+4,30*pulse,14*pulse,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.font=`bold 13px ${FONT}`;ctx.strokeStyle='#173d46';ctx.fillStyle='#fff3dc';ctx.strokeText('RAMPAGE',start.x,start.y-26);ctx.fillText('RAMPAGE',start.x,start.y-26);
+    }
   }else if(rampage.phase==='running'&&rampage.ring){
     const {x,y}=rampage.ring;
     ctx.strokeStyle='#ffe16dcc';ctx.fillStyle='#ffe16d22';ctx.beginPath();ctx.ellipse(x,y+4,29*pulse,13*pulse,0,0,Math.PI*2);ctx.fill();ctx.stroke();

@@ -120,7 +120,7 @@ export function drawHUD(ctx, game) {
   if(race&&(race.phase==='running'||race.phase==='done')){
     const ry=(w<1000?190:104)+84;panel(w-230,ry,210,52);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 11px ${FONT}`;ctx.fillText('STREET RACE',w-34,ry+14);
     ctx.fillStyle='#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(race.phase==='done'?(race.result==='win'?'YOU WIN':'OUTRUN'):`${Math.floor(race.elapsed/60)}:${String(Math.floor(race.elapsed%60)).padStart(2,'0')}.${Math.floor(race.elapsed*10)%10}`,w-34,ry+32);
-    ctx.font=`bold 11px ${FONT}`;ctx.fillText(`CP ${Math.min(race.playerNext+1,race.checkpoints.length)}/${race.checkpoints.length} · POS ${race.position}/2`,w-34,ry+47);
+    ctx.font=`bold 11px ${FONT}`;ctx.fillText(`CP ${Math.min(race.playerNext+1,race.checkpoints.length)}/${race.checkpoints.length} · POS ${race.position}/2 · ${race.routeName||'BEACH LOOP'}`,w-34,ry+47,182);
   }
   if(rampage&&(rampage.phase==='running'||rampage.phase==='done')){
     const ry=(w<1000?190:104)+84+((race&&(race.phase==='running'||race.phase==='done'))?60:0);panel(w-230,ry,210,52);ctx.textAlign='right';ctx.fillStyle='#ef826c';ctx.font=`bold 11px ${FONT}`;ctx.fillText('RAMPAGE',w-34,ry+14);
@@ -133,6 +133,13 @@ export function drawHUD(ctx, game) {
     panel(w-230,fy,210,52);ctx.textAlign='right';ctx.fillStyle='#7be3f0';ctx.font=`bold 11px ${FONT}`;ctx.fillText('FISHING',w-34,fy+14);
     ctx.fillStyle=fishing.phase==='bite'?'#ef826c':'#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(fishing.phase==='bite'?'BITE! · PRESS E':fishing.phase==='cast'?'CASTING…':'WAITING…',w-34,fy+32);
     ctx.fillStyle='#fff3dc';ctx.font=`bold 11px ${FONT}`;ctx.fillText(fishing.lastCatch?`CAUGHT ${fishing.caught} · LAST ${fishing.lastCatch}`:`CAUGHT ${fishing.caught}`,w-34,fy+47,182);
+  }
+  const courier=game.courier;
+  if(courier&&(courier.phase==='running'||courier.phase==='done')){
+    const cy=(w<1000?190:104)+84+((race&&(race.phase==='running'||race.phase==='done'))?60:0)+((rampage&&(rampage.phase==='running'||rampage.phase==='done'))?60:0)+((fishing&&fishing.phase!=='idle')?60:0);
+    panel(w-230,cy,210,52);ctx.textAlign='right';ctx.fillStyle='#7be3f0';ctx.font=`bold 11px ${FONT}`;ctx.fillText('COURIER',w-34,cy+14);
+    ctx.fillStyle=courier.phase==='running'&&courier.timeLeft<15?'#ef826c':'#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(courier.phase==='done'?(courier.result==='delivered'?'DELIVERED':'EXPIRED'):`${Math.floor(Math.max(0,courier.timeLeft)/60)}:${String(Math.floor(Math.max(0,courier.timeLeft)%60)).padStart(2,'0')}`,w-34,cy+32);
+    ctx.fillStyle='#fff3dc';ctx.font=`bold 11px ${FONT}`;const cfocus=game.vehicle||game.player;ctx.fillText(courier.phase==='done'?(courier.result==='delivered'?'ON TIME':'NO PENALTY'):`DROP ${courier.target?Math.round(Math.hypot(cfocus.x-courier.target.x,cfocus.y-courier.target.y)):0} m`,w-34,cy+47,182);
   }
   if(game.police?.arrest>0){panel(w/2-130,h*.32,260,54);ctx.textAlign='center';ctx.fillStyle='#ff9d8d';ctx.font=`bold 18px ${FONT}`;ctx.fillText('BUSTED',w/2,h*.32+18);ctx.fillStyle='#ffffff33';ctx.fillRect(w/2-114,h*.32+35,228,8);ctx.fillStyle='#ef826c';ctx.fillRect(w/2-114,h*.32+35,228*game.police.arrest,8);}
   const combat=game.combat;

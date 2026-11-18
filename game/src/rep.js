@@ -8,6 +8,8 @@ export const REP_TAXI = 10;
 export const REP_COLLECTIBLE = 15;
 export const REP_DEPOSIT = 10;
 export const REP_FISHING = 5;
+export const REP_COURIER = 15;
+export const REP_STUNT = 10;
 
 export function repRequired(level) {
   return 50 * (level - 1) * level;

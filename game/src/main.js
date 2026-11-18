@@ -18,6 +18,8 @@ import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js'
 import { createFuelState, updateFuel, drawFuelWorld } from './fuel.js';
 import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
 import { createFishing, updateFishing, drawFishingWorld } from './fishing.js';
+import { createCourier, updateCourier, drawCourierWorld } from './courier.js';
+import { updateStunt, drawStuntWorld } from './stunt.js';
 import { createRep } from './rep.js';
 import { createRadio, cycleRadio } from './radio.js';
 import { drawPerformer } from './performer.js';
@@ -44,6 +46,7 @@ export const game = {
   fuel: createFuelState(),
   rampage: createRampage(),
   fishing: createFishing(),
+  courier: createCourier(),
   rep: createRep(),
   radio: createRadio(),
 };
@@ -137,7 +140,7 @@ function startGame(foot = false, record=null) {
   if(game.missions.currentMission>=6||game.missions.completed.includes(5))game.missions.objective='Story complete · Free roam in Coral Bay';
   else if(game.missions.currentMission===5)game.missions.objective='Meet Lena at the Marlin Diner · One last job';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.courier=createCourier();game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -273,6 +276,8 @@ function update(dt, time) {
     updateFuel(game,dt);
     if(game.rampage)updateRampage(game.rampage,game,dt);
     if(game.fishing)updateFishing(game.fishing,game,dt,input);
+    if(game.courier)updateCourier(game.courier,game,dt);
+    updateStunt(game,dt);
     game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase' && shot !== 'cover') game.clockMinutes += dt;
     audio.update(game, dt);
     const car=game.vehicle,look=car?car.speed*.3:0;
@@ -288,6 +293,7 @@ function frame(time) {
   if(game.state==='playing'&&game.player.health<=0)finishOutcome('wasted');
   if(game.outcome&&game.rampage?.phase==='running')updateRampage(game.rampage,game,0);
   if(game.outcome&&game.fishing&&game.fishing.phase!=='idle')updateFishing(game.fishing,game,0,input);
+  if(game.outcome&&game.courier&&game.courier.phase==='running')updateCourier(game.courier,game,0);
   const elapsed = lastTime === undefined ? 0 : Math.min((time-lastTime)/1000,.1); lastTime = time;
   
   if (!game.outcome && input.anyPressed('Escape','KeyP')) {
@@ -321,6 +327,8 @@ function frame(time) {
     drawFuelWorld(ctx,game,time);
     if(game.rampage)drawRampageWorld(ctx,game.rampage,game,time);
     if(game.fishing)drawFishingWorld(ctx,game.fishing,game,time);
+    if(game.courier)drawCourierWorld(ctx,game.courier,game,time);
+    drawStuntWorld(ctx,game,time);
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);
     drawCombat(ctx,game);
     drawPopups(ctx,game.popups);

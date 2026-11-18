@@ -31,6 +31,11 @@ export function updateCar(car,input,world,dt,effects=null) {
   car.shake=Math.max(0,car.shake-dt*14); car.impact=0;car.cooldown=Math.max(0,car.cooldown-dt);
   if(car.driver!=='player-driven') return;
   if(car.health<=0){car.speed=car.vx=car.vy=0;return;}
+  if(car.airT>0){
+    car.airT+=dt;car.x+=car.vx*dt;car.y+=car.vy*dt;
+    if(car.fuel>0)car.fuel=Math.max(0,car.fuel-Math.hypot(car.vx,car.vy)*dt*.0011);
+    return;
+  }
   const throttle=Number(input.isDown('KeyW')||input.isDown('ArrowUp'));
   const brake=Number(input.isDown('KeyS')||input.isDown('ArrowDown'));
   const hand=input.isDown('Space');
@@ -168,6 +173,8 @@ export function drawCar(ctx,car,time=0,light=0) {
   const l=car.model.length,w=car.model.width;
   ctx.save();ctx.translate(car.x,car.y);ctx.rotate(car.heading);
   ctx.fillStyle='#163b4344';ctx.beginPath();ctx.roundRect(-l/2+3,-w/2+4,l,w,6);ctx.fill();
+  const lift=car.airT>0?Math.sin(Math.min(1,car.airT/.7)*Math.PI)*26:0;
+  if(lift>0)ctx.translate(0,-lift);
   ctx.fillStyle='#222d34';
   for(const x of [-l*.3,l*.3])for(const y of [-w/2,w/2]){ctx.save();ctx.translate(x,y);if(x>0)ctx.rotate(car.steering);ctx.fillRect(-6,-3,12,6);ctx.restore();}
   ctx.fillStyle=car.color;ctx.beginPath();ctx.roundRect(-l/2,-w/2,l,w,5);ctx.fill();

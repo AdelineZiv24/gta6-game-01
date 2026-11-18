@@ -5,8 +5,9 @@ import { writeSave } from './save.js';
 import { spawnPopup } from './popups.js';
 import { awardRep, REP_MISSION, REP_TAXI, REP_COLLECTIBLE, REP_DEPOSIT } from './rep.js';
 import { startRace, raceStartPoint } from './race.js';
-import { startRampage, rampageStartPoint } from './rampage.js';
+import { startRampage, rampageStartPoint, rampageBeachPoint } from './rampage.js';
 import { fishingPoint } from './fishing.js';
+import { startCourier, courierStartPoint } from './courier.js';
 
 export const MISSIONS = [
   { id:'first-shift', name:'First Shift', reward:ECONOMY.firstShift, time:240 },
@@ -108,6 +109,7 @@ export function updateMissions(s,g,dt,input,parked,traffic){
   if(s.activity==='race')return;
   if(s.activity==='rampage')return;
   if(s.activity==='fishing')return;
+  if(s.activity==='courier')return;
   if(s.activity==='mission'&&g.vehicle)g.vehicle.fuel=Math.max(g.vehicle.fuel??100,40);
   if(s.activity==='taxi'){updateActivities(s,g,dt,input,parked,traffic);return;}
   if(s.phase!=='start')activeStep(s,g,dt,parked);
@@ -122,6 +124,8 @@ function updateActivities(s,g,dt,input,parked,traffic){
   const raceStart=raceStartPoint(g.world);if(near(g,raceStart,95)){s.objective=g.vehicle?'Beach Road · 4 STREET RACE':'Beach Road · STREET RACE — bring a car, press 4';if(g.vehicle&&input.wasPressed('Digit4')&&g.race)startRace(g.race,g);}
   const rampageStart=rampageStartPoint(g.world);if(near(g,rampageStart,95)){s.objective=g.vehicle?'Downtown · 5 RAMPAGE':'Downtown · RAMPAGE — bring a car, press 5';if(g.vehicle&&input.wasPressed('Digit5')&&g.rampage)startRampage(g.rampage,g);}
   const fishSpot=fishingPoint(g.world);if(!g.vehicle&&near(g,fishSpot,95)){s.objective='Marina Pier · FISHING — stand at the waterline, press E';}
+  const courierStart=courierStartPoint(g.world);if(near(g,courierStart,95)){s.objective=g.vehicle?'Courier Depot · 6 COURIER RUSH':'Courier Depot · COURIER RUSH — bring a car, press 6';if(g.vehicle&&input.wasPressed('Digit6')&&g.courier)startCourier(g.courier,g);}
+  const rampageBeach=rampageBeachPoint(g.world);if(near(g,rampageBeach,95)){s.objective=g.vehicle?'West Beach · 5 RAMPAGE':'West Beach · RAMPAGE — bring a car, press 5';if(g.vehicle&&input.wasPressed('Digit5')&&g.rampage)startRampage(g.rampage,g,rampageBeach);}
   if(near(g,g.world.spawnPoints.garage,80)&&g.vehicle&&input.wasPressed('Digit1')&&g.player.cash>=ECONOMY.repair){g.player.cash-=ECONOMY.repair;g.vehicle.health=100;s.objective='Vehicle repaired';}
   else if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit2')&&g.player.cash>=ECONOMY.armour){g.player.cash-=ECONOMY.armour;g.player.armour=100;s.objective='Armour refilled';}
   if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit1'))startTaxi(s,g);
