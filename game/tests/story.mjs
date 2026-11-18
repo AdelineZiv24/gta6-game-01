@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createMissionState,updateMissions,failMission,startTaxi,MISSIONS,drawMissionWorld} from '../src/missions.js';
 import {createWorld} from '../src/world.js';
 import {createPlayer} from '../src/player.js';
-import {createCar,carBlocked,resolveCarContacts} from '../src/vehicles.js';
+import {createCar,carBlocked,resolveCarContacts,MODELS} from '../src/vehicles.js';
 import {createCombat,grantPistol} from '../src/combat.js';
 import {createWanted} from '../src/wanted.js';
 import {writeSave,loadSave} from '../src/save.js';
@@ -114,3 +114,10 @@ console.log('REP gains from deposits, collectibles and taxi fares: PASS');
  const legacy=loadSave();assert.deepEqual(legacy.rep,{xp:0});assert.equal(legacy.cash,50);
 }
 console.log('Save round trip with REP, finale indices, legacy default: PASS');
+{
+ assert.equal(MODELS.length,8);
+ const truck=createCar(200,200,0,6,'#777','player-driven');assert.equal(truck.model.name,'Dockhand Flatbed');
+ const roadster=createCar(200,260,0,7,'#777','player-driven');assert.equal(roadster.model.name,'Marlin Roadster');
+ assert(MODELS.every(m=>m.topSpeed<=375));assert.equal(Math.max(...MODELS.map(m=>m.topSpeed)),375);
+}
+console.log('Vehicle roster grows to eight models, no new fastest car: PASS');

@@ -7,7 +7,7 @@ import { createRenderer, drawMinimapBase } from './render.js';
 import { createInput } from './input.js';
 import { createPlayer, updatePlayer, drawPlayer } from './player.js';
 import { drawHUD } from './hud.js';
-import { createCar, modelByName, setupParkedCars, updateCar, drawCar, resolveCarContacts, createVehicleEffects, updateVehicleEffects, drawVehicleEffects } from './vehicles.js';
+import { createCar, modelByName, setupParkedCars, updateCar, drawCar, headlightLevel, resolveCarContacts, createVehicleEffects, updateVehicleEffects, drawVehicleEffects } from './vehicles.js';
 import { createTraffic, updateTraffic } from './traffic.js';
 import { createPedestrians, updatePedestrians, drawPedestrian, addFleeingPedestrian } from './pedestrians.js';
 import { createMissionState, updateMissions, drawMissionWorld, failMission } from './missions.js';
@@ -18,6 +18,7 @@ import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js'
 import { createFuelState, updateFuel, drawFuelWorld } from './fuel.js';
 import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
 import { createRep } from './rep.js';
+import { createRadio, cycleRadio } from './radio.js';
 import { drawPerformer } from './performer.js';
 
 const canvas = document.getElementById('game');
@@ -40,6 +41,7 @@ export const game = {
   fuel: createFuelState(),
   rampage: createRampage(),
   rep: createRep(),
+  radio: createRadio(),
 };
 canvas.addEventListener('pointerdown',()=>{audio.unlock();if(game.missions?.dialogue)game.dialogueClick=true;});
 window.addEventListener('keydown', event => { audio.unlock(); if (event.code === 'KeyM' && !event.repeat) audio.toggleMute(); });
@@ -131,7 +133,7 @@ function startGame(foot = false, record=null) {
   if(game.missions.currentMission>=6||game.missions.completed.includes(5))game.missions.objective='Story complete · Free roam in Coral Bay';
   else if(game.missions.currentMission===5)game.missions.objective='Meet Lena at the Marlin Diner · One last job';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.rep=createRep(record);game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -286,6 +288,7 @@ function frame(time) {
     else if(game.state==='paused') setState('playing');
   } else if(!game.outcome&&input.wasPressed('KeyH') && game.state!=='help') openHelp();
   if(game.state==='playing'&&input.wasPressed('KeyE')&&!game.missions?.dialogue&&!game.missions?.completion&&!(game.missions?.phase==='courier'&&!game.vehicle&&Math.hypot(game.player.x-game.missions.courier.x,game.player.y-game.missions.courier.y)<55)&&!(!game.vehicle&&!game.missions?.activity&&Math.hypot(game.player.x-world.spawnPoints.diner.x,game.player.y-world.spawnPoints.diner.y)<90))game.interactionRequested=true;
+  if(game.state==='playing'&&game.vehicle&&input.wasPressed('KeyT'))cycleRadio(game.radio);
   accumulator += elapsed;
   while(accumulator>=STEP){update(STEP,time);accumulator-=STEP;}
   if (game.state !== 'playing') audio.update(game, elapsed);
@@ -298,7 +301,8 @@ function frame(time) {
     drawHeliLight(ctx,game.police);
     for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p);
     drawPerformer(ctx,game,time);
-    for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time);
+    const lightLevel=headlightLevel(game.clockMinutes);
+    for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time,lightLevel);
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view(),true);
     drawOfficers(ctx,game.police);
     drawHeli(ctx,game.police,time);

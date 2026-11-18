@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { responseRows } from '../src/hud.js';
-import { radioNow, RADIO_TRACKS } from '../src/radio.js';
+import { radioNow, RADIO_TRACKS, RADIO_STATIONS, BAY_TRACKS, stationNow, createRadio, cycleRadio } from '../src/radio.js';
 const listeners=new Map(),elements=new Map(),storage=new Map();let raf,confirmResult=false,confirms=0,writes=0;
 const ctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:(...args)=>{for(const value of args)if(typeof value==='number')assert(Number.isFinite(value),`${String(k)} received a non-finite coordinate`);},set:(o,k,v)=>(o[k]=v,true)});
 function element(id){if(!elements.has(id))elements.set(id,{id,hidden:true,disabled:false,style:{},focus(){},addEventListener(){},getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:1280,height:800})});return elements.get(id);}
@@ -15,7 +15,8 @@ game.missions.currentMission=2;Object.assign(game.player,game.world.spawnPoints.
 const before=writes;location.search='?shot=mission';const shot=await import('../src/main.js?shot-test');frame();key('KeyP');assert.equal(writes,before);assert(shot.game.missions);console.log('Main loop, real input, mission autosave, pause, Continue, New Game confirmation, shot hook: PASS');
 
 const {createWorld}=await import('../src/world.js');
-const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar}=await import('../src/vehicles.js');
+const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar,MODELS,drawCar,headlightLevel}=await import('../src/vehicles.js');
+const {createTraffic}=await import('../src/traffic.js');
 const {createPolice,spawnPolice,spawnHeli,updatePolice}=await import('../src/police.js');
 const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
 const {createRace,buildRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
@@ -72,6 +73,39 @@ noRefill.vehicle.speed=0;noRefill.vehicle.x+=500;
 for(let tick=0;tick<5;tick++)updateFuel(noRefill,.1);
 assert.equal(noRefill.vehicle.fuel,30);
 console.log('Fuel drain, limp mode, station locations and refills: PASS');
+assert.equal(headlightLevel(720),0);assert(headlightLevel(1040)>0.5);assert.equal(headlightLevel(0),1);assert(headlightLevel(555)<0.25);
+console.log('Headlight level follows the render daylight curve: PASS');
+{
+ let gradients=0;const grad={addColorStop(){}};const rec=new Proxy({createLinearGradient:()=>{gradients++;return grad;},measureText:t=>({width:t.length*7})},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ const car=createCar(300,lane,0,1,undefined,'traffic-driven');
+ drawCar(rec,car,0,0);assert.equal(gradients,0);
+ drawCar(rec,car,0,headlightLevel(1040));assert.equal(gradients,2);
+ const parked=createCar(300,lane,0,1,undefined,'parked');
+ drawCar(rec,parked,0,1);assert.equal(gradients,2);
+}
+console.log('Headlight cones gated by dusk level, twin gradients: PASS');
+{
+ assert.equal(MODELS.length,8);assert.equal(MODELS[6].name,'Dockhand Flatbed');assert.equal(MODELS[7].name,'Marlin Roadster');
+ for(const m of MODELS){assert(m.topSpeed<=375&&m.topSpeed>=245);assert(m.acceleration<=215&&m.acceleration>=120);}
+ const flatbed=createCar(300,lane,0,6,undefined,'player-driven');assert.equal(flatbed.model.name,'Dockhand Flatbed');assert.equal(flatbed.radius,MODELS[6].width/2+2);
+ const roadster=createCar(320,lane,0,7,undefined,'traffic-driven');assert.equal(roadster.model.name,'Marlin Roadster');
+ for(let frame=0;frame<600;frame++)updateCar(flatbed,{isDown:key=>key==='KeyW'},seeded,1/60);
+ assert(flatbed.x>300&&flatbed.speed>100);
+}
+console.log('Flatbed and roadster models spawn, drive, stay in stat range: PASS');
+{
+ const focus={x:2100,y:1500};let sawFlatbed=false,sawRoadster=false;
+ for(let fleet=0;fleet<8;fleet++){const t=createTraffic(seeded,focus);for(const car of t.cars){if(car.model===MODELS[6])sawFlatbed=true;if(car.model===MODELS[7])sawRoadster=true;}}
+ assert(sawFlatbed&&sawRoadster);
+}
+console.log('Traffic fleets include the flatbed and the roadster: PASS');
+{
+ assert.equal(RADIO_STATIONS.length,2);assert.equal(RADIO_STATIONS[0].name,'CORAL FM 98.1');assert.equal(RADIO_STATIONS[1].name,'BAY FM 101.3');assert.equal(BAY_TRACKS.length,5);assert(BAY_TRACKS.every(t=>t.title&&t.artist));
+ assert.equal(stationNow(0,0).station,'CORAL FM 98.1');assert.equal(stationNow(0,1).station,'BAY FM 101.3');
+ assert.notEqual(stationNow(0,1).index,stationNow(25,1).index);assert.equal(stationNow(24*BAY_TRACKS.length,1).index,stationNow(0,1).index);
+ const radio=createRadio();assert.equal(radio.station,0);assert.equal(cycleRadio(radio),1);assert.equal(cycleRadio(radio),2);assert.equal(cycleRadio(radio),0);
+}
+console.log('BAY FM second station and CORAL-BAY-OFF cycle: PASS');
 
 const effects=createVehicleEffects(),car=createCar(1000,lane,0,1,undefined,'traffic-driven');
 car.speed=180;updateVehicleEffects(effects,[car],seeded,null,1/60);
@@ -235,6 +269,7 @@ for(const scene of ['start','mission','foot','chase','cover']){
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
  if(scene==='chase'){assert(staged.rep);assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);assert(staged.race);assert.equal(staged.race.phase,'running');assert(staged.race.rival);assert.equal(staged.race.checkpoints.length,5);assert.equal(staged.race.position,2);assert(responseRows(staged).every(row=>typeof row.callsign==='string'&&row.callsign.length>0));}
  if(scene==='cover'){
+  assert(staged.radio);assert.equal(staged.radio.station,0);assert(headlightLevel(staged.clockMinutes)>0.5);
   assert(staged.rep);assert.equal(staged.rep.xp,0);
   assert.equal(staged.race.phase,'idle');
   assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS ×3');assert.equal(staged.vehicleEffects.nearChain,3);assert(staged.popups.list.some(entry=>entry.life>0&&entry.text==='NEAR MISS ×3'));assert(staged.vehicleEffects.markCursor>0);

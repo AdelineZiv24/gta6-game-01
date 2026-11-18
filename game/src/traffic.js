@@ -3,6 +3,7 @@ import { createRandom, angleDifference } from './random.js';
 const random=createRandom('bay-traffic');
 // Cardinal directions clockwise in screen coordinates; right-hand lanes are +20 normal.
 const DX=[1,0,-1,0],DY=[0,1,0,-1];
+const MODEL_ROLL=[0,1,2,3,4,5,0,1,6,7];
 function target(car,world) {
   const a=car.route,d=a.direction;
   car.tx=world.roads.vertical[a.col].x-DY[d]*20;car.ty=world.roads.horizontal[a.row].y+DX[d]*20;
@@ -19,7 +20,7 @@ function spawn(world,focus) {
     const col=Math.floor(random()*(world.roads.vertical.length-1)),row=Math.floor(random()*(world.roads.horizontal.length-1));
     const d=Math.floor(random()*4),x=world.roads.vertical[col].x,y=world.roads.horizontal[row].y;
     const dist=Math.hypot(x-focus.x,y-focus.y);if(dist<350||dist>1350)continue;
-    const car=createCar(x-DY[d]*20,y+DX[d]*20,d*Math.PI/2,Math.floor(random()*6),CAR_COLORS[(col*7+row*3+d)%CAR_COLORS.length],'traffic-driven');
+    const car=createCar(x-DY[d]*20,y+DX[d]*20,d*Math.PI/2,MODEL_ROLL[Math.floor(random()*MODEL_ROLL.length)],CAR_COLORS[(col*7+row*3+d)%CAR_COLORS.length],'traffic-driven');
     car.route={col,row,direction:d};next(car,world);car.speed=65+random()*35;return car;
   }return null;
 }

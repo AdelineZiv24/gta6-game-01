@@ -12,3 +12,20 @@ export function radioNow(seconds) {
   const { title, artist } = RADIO_TRACKS[index];
   return { station: RADIO_STATION, title, artist, index };
 }
+
+export const BAY_STATION = 'BAY FM 101.3';
+export const BAY_TRACKS = [
+  { title: 'Harbour Moon', artist: 'The Dockside Three' },
+  { title: 'Midnight Channel', artist: 'Ferry Widow' },
+  { title: 'Salt and Static', artist: 'Vela Norte' },
+  { title: 'Night Swim', artist: 'Paloma Drive' },
+  { title: 'Low Beam Serenade', artist: 'The Breakwater Club' },
+];
+export const RADIO_STATIONS = [{name:RADIO_STATION,tracks:RADIO_TRACKS},{name:BAY_STATION,tracks:BAY_TRACKS}];
+export function stationNow(seconds, stationIndex){
+  const station=RADIO_STATIONS[stationIndex]||RADIO_STATIONS[0];
+  const index=Math.floor(seconds/24)%station.tracks.length;const {title,artist}=station.tracks[index];
+  return {station:station.name,title,artist,index};
+}
+export function createRadio(){return {station:0};}
+export function cycleRadio(radio){radio.station=(radio.station+1)%3;return radio.station;}

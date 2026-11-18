@@ -7,6 +7,8 @@ export const MODELS = [
   {name:'Solstice Convertible',length:46,width:25,topSpeed:375,acceleration:215},
   {name:'Parcel Pelican',length:55,width:28,topSpeed:245,acceleration:120},
   {name:'Sunline Taxi',length:48,width:25,topSpeed:315,acceleration:170},
+  {name:'Dockhand Flatbed',length:58,width:28,topSpeed:262,acceleration:132},
+  {name:'Marlin Roadster',length:42,width:24,topSpeed:338,acceleration:198},
 ];
 export function modelByName(name) { return MODELS.find(model=>model.name===name) || MODELS[0]; }
 export const CAR_COLORS=['#dc735b','#5ba8a8','#eee1b9','#577997','#936f99','#87a96b','#e3b854','#b9c8c0','#c38c74','#83b9c3','#baa3bd','#b8b574'];
@@ -161,7 +163,8 @@ export function drawVehicleEffects(ctx,effects,view,particles=false) {
   }
   ctx.restore();
 }
-export function drawCar(ctx,car,time=0) {
+export function headlightLevel(clockMinutes){const hour=((clockMinutes%1440)+1440)%1440;const daylight=Math.max(0,Math.min(1,(Math.sin((hour-360)/1440*Math.PI*2)+0.18)/1.18));return 1-daylight;}
+export function drawCar(ctx,car,time=0,light=0) {
   const l=car.model.length,w=car.model.width;
   ctx.save();ctx.translate(car.x,car.y);ctx.rotate(car.heading);
   ctx.fillStyle='#163b4344';ctx.beginPath();ctx.roundRect(-l/2+3,-w/2+4,l,w,6);ctx.fill();
@@ -173,14 +176,17 @@ export function drawCar(ctx,car,time=0) {
   if(car.model===MODELS[2]){ctx.fillStyle='#344c4c';ctx.fillRect(-l*.43,-w*.34,l*.23,w*.68);}
   if(car.model===MODELS[4]){ctx.fillStyle='#f4e9cd';ctx.fillRect(-l*.4,-w*.35,l*.49,w*.7);}
   if(car.model===MODELS[5]){ctx.fillStyle='#fff2c6';ctx.fillRect(-4,-5,9,10);}
+  if(car.model===MODELS[6]){ctx.fillStyle='#54686a';ctx.fillRect(-l*.47,-w*.37,l*.36,w*.74);ctx.fillStyle='#2e3f42';ctx.fillRect(-l*.47,-w*.37,l*.36,3);ctx.fillRect(-l*.47,w*.37-3,l*.36,3);ctx.fillRect(-l*.47,-w*.37,3,w*.74);ctx.fillStyle='#8a6f4d';ctx.fillRect(-l*.42,-w*.24,l*.14,w*.48);ctx.fillStyle='#22333d';ctx.beginPath();ctx.arc(-l*.16,0,4.5,0,Math.PI*2);ctx.fill();}
+  if(car.model===MODELS[7]){ctx.fillStyle='rgba(179,216,224,.9)';ctx.fillRect(l*.02,-w*.34,3,w*.68);ctx.fillStyle='#7a4a35';ctx.fillRect(-l*.17,-w*.32,l*.16,w*.26);ctx.fillRect(-l*.17,w*.06,l*.16,w*.26);ctx.fillStyle='#31456b';ctx.fillRect(-l*.13,-w*.26,l*.10,w*.15);ctx.fillStyle='#efc39d';ctx.beginPath();ctx.arc(-l*.07,-w*.185,4.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#2b2b2b';ctx.fillRect(-l*.21,-w*.36,3,w*.72);}
   if(car.police){ctx.fillStyle=car.interceptor?'#dfc572':'#2864a2';ctx.fillRect(-l*.42,-w/2,l*.8,4);ctx.fillRect(-l*.42,w/2-4,l*.8,4);ctx.fillStyle=car.interceptor?'#283c49':'#f1f3ed';ctx.fillRect(-6,-w*.32,12,w*.64);ctx.fillStyle=Math.floor(time/150)%2?'#ff4b58':'#822a48';ctx.fillRect(-3,-10,6,9);ctx.fillStyle=Math.floor(time/150)%2?'#254b98':'#54baff';ctx.fillRect(-3,1,6,9);if(car.interceptor){ctx.fillStyle='#eee1b9';ctx.fillRect(l*.27,-w*.3,l*.13,w*.6);ctx.fillStyle='#172e3e';ctx.fillRect(-l*.43,-w*.43,3,w*.86);}}
   ctx.fillStyle='#fff0b4';ctx.fillRect(l/2-3,-w/2+3,3,6);ctx.fillRect(l/2-3,w/2-9,3,6);
-  if (car.driver === 'player-driven' || car.driver === 'traffic-driven' || car.police) {
-    ctx.save();
-    ctx.globalAlpha = 0.11;
-    ctx.fillStyle = '#fff2ae';
-    ctx.beginPath(); ctx.moveTo(l / 2, -w / 2 + 2); ctx.lineTo(l / 2 + 100, -34); ctx.lineTo(l / 2 + 100, 34); ctx.lineTo(l / 2, w / 2 - 2); ctx.closePath(); ctx.fill();
-    ctx.restore();
+  if(light>0.05&&(car.driver==='player-driven'||car.driver==='traffic-driven'||car.police)){
+    for(const side of [-1,1]){
+      const hy=side*(w/2-5);const grad=ctx.createLinearGradient(l/2,0,l/2+92,0);
+      grad.addColorStop(0,`rgba(255,242,174,${0.34*light})`);grad.addColorStop(1,'rgba(255,242,174,0)');
+      ctx.fillStyle=grad;ctx.beginPath();ctx.moveTo(l/2,hy-2.5);ctx.lineTo(l/2+92,hy-16);ctx.lineTo(l/2+92,hy+16);ctx.lineTo(l/2,hy+2.5);ctx.closePath();ctx.fill();
+    }
+    ctx.fillStyle='#fff6c8';for(const side of [-1,1]){ctx.beginPath();ctx.arc(l/2-1,side*(w/2-6),2.6,0,Math.PI*2);ctx.fill();}
   }
   ctx.fillStyle='#e34e45';ctx.fillRect(-l/2,-w/2+3,3,5);ctx.fillRect(-l/2,w/2-8,3,5);
   if(car.health<35){for(let i=0;i<3;i++){const p=(time*.001+i*.33)%1;ctx.fillStyle=`rgba(61,65,64,${(1-p)*.5})`;ctx.beginPath();ctx.arc(l*.3-p*18,-p*22,4+p*10,0,Math.PI*2);ctx.fill();}}
