@@ -28,16 +28,16 @@ await new Promise((resolveServer, rejectServer) => {
 });
 const browser = await chromium.launch({ headless: true });
 const scenes = [
-  ['1-start.jpg', 'start'],
-  ['2-mission.jpg', 'mission'],
-  ['3-foot.jpg', 'foot'],
-  ['4-chase.jpg', 'chase'],
+  ['1-start.jpg', 'cover', 900],
+  ['2-mission.jpg', 'mission', 2500],
+  ['3-foot.jpg', 'foot', 2500],
+  ['4-chase.jpg', 'chase', 1100],
 ];
 try {
-  for (const [name, shot] of scenes) {
+  for (const [name, shot, wait] of scenes) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`http://127.0.0.1:${port}/?shot=${shot}&seed=1`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(wait);
     let quality = 72;
     const target = join(output, name);
     do {

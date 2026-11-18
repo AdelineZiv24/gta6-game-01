@@ -23,6 +23,7 @@ const audio = createAudio();
 const minimap = document.createElement('canvas');
 minimap.width = 864; minimap.height = 720; drawMinimapBase(minimap, world);
 const shot = new URLSearchParams(location.search).get('shot');
+const SHOT_CLOCK = 1040;
 export const game = {
   shot, state: 'menu', world, player: createPlayer(world.spawnPoints.player), minimap,
   objective: { text: 'Meet Lena Marsh at the Marlin Diner', position: world.spawnPoints.diner },
@@ -113,6 +114,7 @@ function startGame(foot = false, record=null) {
   const near=parked.reduce((a,b)=>Math.hypot(b.x-2100,b.y-1500)<Math.hypot(a.x-2100,a.y-1500)?b:a);
   const spawn = foot ? {x:near.x,y:near.y+36,heading:-Math.PI/2} : world.spawnPoints.player;
   game.player = createPlayer(spawn); game.playSeconds = 0; game.clockMinutes = 555;
+  if(shot)game.clockMinutes=SHOT_CLOCK;
   if(record){game.player.cash=record.cash; if(record.position){spawn.x=record.position.x;spawn.y=record.position.y;game.player.x=game.player.previousX=spawn.x;game.player.y=game.player.previousY=spawn.y;}}
   game.missions=createMissionState(record);game.save=record;
   game.missions.marker=game.missions.currentMission<5?world.spawnPoints.diner:null;
@@ -120,7 +122,7 @@ function startGame(foot = false, record=null) {
   game.objective={text:game.missions.objective,position:game.missions.marker};
   game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
-  if(shot==='drive'||shot==='chase'){
+  if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
     parked.push(car);game.vehicle=car;game.player.x=spawn.x=car.x;game.player.y=spawn.y=car.y;
   }
@@ -132,8 +134,33 @@ function startGame(foot = false, record=null) {
     const taxi=createCar(road.x,game.player.y+170,Math.PI/2,5,undefined,'traffic-driven');taxi.speed=115;traffic.cars.push(taxi);
     pedestrians.people.push(...Array.from({length:5},(_,i)=>{const p={...pedestrians.people[i],x:road.x-58+i*25,y:game.player.y+105,facing:Math.PI/2,state:'walk',pause:0};return p;}));
   }
-  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<3;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+[-20,20,-22][i],0,i===2);u.car.speed=180;}game.police.spawnTimer=5;
-    const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+190+i*75,road.y+20,0,i+1,undefined,'traffic-driven');car.speed=92;traffic.cars.push(car);}
+  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<3;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+[-20,20,-22][i],0,i===2);u.car.speed=180;}game.police.spawnTimer=5;
+    const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+[430,610][i],road.y+20,0,i+1,undefined,'traffic-driven');car.speed=[125,115][i];traffic.cars.push(car);}
+  }
+  if(shot==='cover'){
+    setWanted(game.wanted,4,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;
+    for(const [index,offset] of [-100,-170,-240,-310].entries()){
+      const unit=spawnPolice(game.police,game.vehicle.x+offset,game.vehicle.y+[-24,14,-40,22][index],0,index===0);unit.car.speed=180;
+    }
+    game.police.spawnTimer=5;
+    const road=world.roads.horizontal[3];
+    for(let index=0;index<3;index++){
+      const adjacent=index===1;
+      const car=createCar(game.vehicle.x+[480,300,660][index],road.y+(adjacent?-20:20),0,index+1,undefined,'traffic-driven');
+      car.speed=[115,125,105][index];traffic.cars.push(car);
+    }
+    pedestrians.people.push(...Array.from({length:6},(_,index)=>{
+      const source=pedestrians.people[index];
+      return {...source,x:game.vehicle.x-70+index*29,y:game.vehicle.y+(index%2?-1:1)*(58+Math.floor(index/2)*5),facing:Math.PI/2,state:'walk',pause:0};
+    }));
+    for(let index=0;index<10;index++){
+      const x=game.vehicle.x-45-index*13,yOffset=index*index*.035;
+      for(const side of [-1,1]){
+        const endX=x-8,endY=game.vehicle.y+side*8+yOffset;
+        Object.assign(game.vehicleEffects.marks[game.vehicleEffects.markCursor++%game.vehicleEffects.marks.length],{x:endX,y:endY,fromX:x,fromY:game.vehicle.y+side*8+yOffset-.6,life:6});
+      }
+    }
+    game.vehicleEffects.popup={text:'NEAR MISS',until:999};
   }
   collectCars();
   renderer.camera.x = spawn.x; renderer.camera.y = spawn.y; renderer.camera.clamp();
@@ -159,7 +186,7 @@ function resize() {
 }
 window.addEventListener('resize', resize); resize();
 window.addEventListener('blur', () => { if (game.state === 'playing' && !shot) setState('paused'); });
-setState('menu');syncMenu(); if (shot === 'foot' || shot === 'drive' || shot === 'chase'||shot==='mission') startGame(true);
+setState('menu');syncMenu(); if (shot === 'foot' || shot === 'drive' || shot === 'chase'||shot==='mission'||shot==='cover') startGame(true);
 const STEP = 1 / 60;
 let missionKeysConsumed=false;
 const missionInput={wasPressed:code=>!missionKeysConsumed&&input.wasPressed(code)};
@@ -174,7 +201,7 @@ function update(dt, time) {
       if(Math.hypot(entry.car.x-game.player.x,entry.car.y-game.player.y)>80)game.entering=null;
       else {entry.car.speed=0;entry.car.disabled=.1;entry.remaining-=dt;if(entry.remaining<=0)enterCar(entry.car);}
     }
-    if (shot === 'chase' && game.vehicle) {
+    if ((shot === 'chase'||shot==='cover') && game.vehicle) {
       const lane = world.roads.horizontal.reduce((best, road) => Math.abs(road.y - game.vehicle.y) < Math.abs(best.y - game.vehicle.y) ? road : best, world.roads.horizontal[0]);
       game.vehicle.y += (lane.y + 20 - game.vehicle.y) * Math.min(1, dt * 3);
       game.vehicle.heading = 0;
@@ -215,12 +242,12 @@ function update(dt, time) {
     if(game.vehicle&&game.vehicle.impact>65&&game.combat.lastCrashTime!==game.playSeconds){damagePlayer(game,game.vehicle.impact*.035);game.combat.lastCrashTime=game.playSeconds;}
     if(!game.vehicle)for(const car of allCars)if(Math.abs(car.speed)>65&&Math.hypot(car.x-game.player.x,car.y-game.player.y)<car.radius+10&&game.playSeconds-game.combat.lastDamage>.8)damagePlayer(game,Math.abs(car.speed)*.12);
     if(!game.missions?.dialogue&&!game.missions?.completion)updateCombat(game,world,input,renderer.camera,allCars,pedestrians.people,reportCrime,dt);
-    if (shot !== 'chase') updateWanted(game.wanted,world,focus,game.recentCrimes,[...pedestrians.people,...traffic.cars.filter(c=>!c.abandoned)],game.police.units,game.playSeconds,dt);
+    if (shot !== 'chase'&&shot!=='cover') updateWanted(game.wanted,world,focus,game.recentCrimes,[...pedestrians.people,...traffic.cars.filter(c=>!c.abandoned)],game.police.units,game.playSeconds,dt);
     if(game.player.health<=0)finishOutcome('wasted');else if(game.police.arrest>=1)finishOutcome('busted');
     if(game.missions&&!game.outcome){const before=game.missions.completed.length,faresBefore=game.missions.taxiFares,itemsBefore=game.missions.collectibles.length,dialogueBefore=game.missions.dialogue?.index;updateMissions(game.missions,game,dt,missionInput,parked,traffic);missionKeysConsumed=true;if(game.missions.dialogue?.index!==dialogueBefore)audio.effect('dialogue');if(game.missions.completed.length>before||game.missions.taxiFares>faresBefore||game.missions.collectibles.length>itemsBefore){audio.effect(game.missions.taxiFares>faresBefore?'cash':'pickup');game.save=writeSave(game,game.missions);}game.objective={text:game.missions.objective,position:game.missions.marker};}
     if(game.player.health<=0)finishOutcome('wasted');else if(game.police.arrest>=1)finishOutcome('busted');
     if(game.recentCrimes.length>96){const floor=game.wanted.lastId-32;game.recentCrimes=game.recentCrimes.filter(c=>c.id>floor);}
-    game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase') game.clockMinutes += dt;
+    game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase' && shot !== 'cover') game.clockMinutes += dt;
     audio.update(game, dt);
     const car=game.vehicle,look=car?car.speed*.3:0;
     renderer.camera.follow(focus.x+(car?Math.cos(car.heading)*look:0),focus.y+(car?Math.sin(car.heading)*look:0),1-Math.exp(-6*dt));

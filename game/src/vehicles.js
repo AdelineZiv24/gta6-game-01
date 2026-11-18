@@ -75,7 +75,7 @@ export function resolveCarContacts(cars,report,time,effects=null) {
   }
 }
 export function createVehicleEffects() {
-  return {marks:Array.from({length:420},()=>({life:0})),particles:Array.from({length:128},()=>({life:0})),markCursor:0,particleCursor:0,cars:new WeakMap(),nearCars:new WeakMap(),random:createRandom('bay-tyres-and-dust'),time:0,shake:0,nearCooldown:0};
+  return {marks:Array.from({length:420},()=>({life:0})),particles:Array.from({length:128},()=>({life:0})),markCursor:0,particleCursor:0,cars:new WeakMap(),nearCars:new WeakMap(),random:createRandom('bay-tyres-and-dust'),time:0,shake:0,nearCooldown:0,popup:null};
 }
 export function emitVehicleImpact(effects,x,y,force,metal=false,car=null) {
   if(!effects||force<30)return;
@@ -135,7 +135,7 @@ export function updateVehicleEffects(effects,cars,world,playerCar,dt) {
     const gap=carClearance(playerCar,car),contactLimit=(playerCar.model.length+car.model.length)*.36;
     const clear=gap>0&&distance>contactLimit+1;
     const relativeSpeed=Math.hypot(playerCar.vx-car.vx,playerCar.vy-car.vy);
-    if(previous?.near&&clear&&distance>previous.distance&&relativeSpeed>110&&effects.nearCooldown===0&&playerCar.cooldown===0){effects.shake=2.2;effects.nearCooldown=.9;}
+    if(previous?.near&&clear&&distance>previous.distance&&relativeSpeed>110&&effects.nearCooldown===0&&playerCar.cooldown===0){effects.shake=2.2;effects.popup={text:'NEAR MISS',until:effects.time+1.15};effects.nearCooldown=.9;}
     const state=previous||{};state.distance=distance;state.near=clear&&gap<9;effects.nearCars.set(car,state);
   }
 }

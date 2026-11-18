@@ -68,15 +68,16 @@ const {updateTraffic}=await import('../src/traffic.js');
 const stagedCar=createCar(1000,lane,0,1,undefined,'traffic-driven');stagedCar.speed=92;
 updateTraffic({cars:[stagedCar],timer:1},seeded,playerCar,[stagedCar],[],1/60,()=>{});
 assert([stagedCar.x,stagedCar.y,stagedCar.heading,stagedCar.tx,stagedCar.ty].every(Number.isFinite),'staged traffic gets a valid route');
-for(const scene of ['start','mission','foot','chase']){
+for(const scene of ['start','mission','foot','chase','cover']){
  location.search=`?shot=${scene}&seed=1`;
  const {game:staged}=await import(`../src/main.js?scene-${scene}`);
  let frameTime=0;
  for(let index=0;index<180;index++){raf(frameTime);frameTime+=1000/60;}
- assert.equal(staged.world.seed,'1');assert.equal(staged.clockMinutes,555);
+ assert.equal(staged.world.seed,'1');assert.equal(staged.clockMinutes,scene==='start'?555:1040);
  assert.equal(staged.state,scene==='start'?'menu':'playing');
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
  if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);}
+ if(scene==='cover'){assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,4);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS');assert(staged.vehicleEffects.markCursor>0);}
  console.log(`Seed=1 ${scene} scene: 180 frames, pinned clock, finite actors PASS`);
 }
