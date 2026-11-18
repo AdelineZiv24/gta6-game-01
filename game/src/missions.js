@@ -2,6 +2,7 @@ import { ECONOMY } from './config.js';
 import { MODELS, createCar } from './vehicles.js';
 import { setWanted } from './wanted.js';
 import { writeSave } from './save.js';
+import { spawnPopup } from './popups.js';
 
 export const MISSIONS = [
   { id:'first-shift', name:'First Shift', reward:ECONOMY.firstShift, time:240 },
@@ -11,6 +12,7 @@ export const MISSIONS = [
   { id:'sunrise-run', name:'Sunrise Run', reward:ECONOMY.sunriseRun, time:120 },
 ];
 const point=(x,y)=>({x,y});
+const pop=(g,x,y,text,color)=>spawnPopup(g.popups,x,y,text,color);
 export function createMissionState(save=null) {
   const completed=[...(save?.completed||[])];
   return { completed, currentMission:save?.currentMission??completed.length, collectibles:[...(save?.collectibles||[])], bestTimes:{...(save?.bestTimes||{})}, taxiFares:save?.taxiFares||0, totalEarned:save?.totalEarned||0, activity:null, dialogue:null, retry:false, completion:null, storyElapsed:save?.storyElapsed||0, umbrellas: Array.from({length:12},(_,i)=>point(250+i*345,3160+(i%3)*42)), taxiTarget:null, rival:null, courier:null, van:null, stop:0, elapsed:0, phase:'diner', marker:null, objective:'Meet Lena Marsh at the Marlin Diner' };
@@ -32,7 +34,7 @@ function begin(s,g,index){
 function success(s,g,index){
   const def=MISSIONS[index],elapsed=s.elapsed;
   const bonus=index===3?Math.max(0,Math.round((1-elapsed/def.time)*500)):0;
-  const reward=def.reward+bonus;cash(g,s,reward);s.completed=Array.from(new Set([...s.completed,index]));
+  const reward=def.reward+bonus;cash(g,s,reward);s.splash={name:def.name,reward,total:g.player.cash,until:(g.playSeconds||0)+2.8};const f=g.vehicle||g.player;pop(g,f.x,f.y-44,`+$${reward}`,'#8df0a5');s.completed=Array.from(new Set([...s.completed,index]));
   const timeKey=s.scoreRun?`${def.id}-replay`:def.id;
   s.bestTimes[timeKey]=Math.min(s.bestTimes[timeKey]??Infinity,elapsed);s.currentMission=s.scoreRun?s.resumeMission:Math.min(5,index+1);s.activity=null;s.retry=false;s.marker=diner(g);s.objective=index===4?'Story complete · Free roam in Coral Bay':'Meet Lena at the Marlin Diner for the next job';
   cleanupMissionEntities(s,g);s.scoreRun=false;g.save=writeSave(g,s);
@@ -71,7 +73,7 @@ function activeStep(s,g,dt,parked){
   if(i===2){if(s.phase==='courier'&&!g.vehicle&&near(g,s.courier,55)&&g.interacting){s.phase='return';setTask(s,'Get the envelope back to Lena at the diner',diner(g));s.dialogue=say('Courier',['You did not get this from me. If anybody asks, I was never here.']);}else if(s.phase==='return'&&!g.vehicle&&near(g,diner(g),65))success(s,g,i);}
   if(i===3&&g.vehicle===s.van)s.marker=s.stops[s.stop];
   if(i===3&&s.van?.health<=0){failMission(s,'The deposit van is wrecked. Return to the diner to retry.');return;}
-  if(i===3&&g.vehicle===s.van&&near(g,s.stops[s.stop],72)){s.stop++;if(s.stop===3)success(s,g,i);else {setTask(s,`Drive to ATM ${s.stop+1} of 3`,s.stops[s.stop]);g.wanted.heat=Math.min(125,g.wanted.heat+25);g.wanted.stars=Math.min(5,Math.ceil(g.wanted.heat/25));g.wanted.lastCrime=g.playSeconds;}}
+  if(i===3&&g.vehicle===s.van&&near(g,s.stops[s.stop],72)){s.stop++;if(s.stop===3)success(s,g,i);else {setTask(s,`Drive to ATM ${s.stop+1} of 3`,s.stops[s.stop]);pop(g,s.van.x,s.van.y-44,`DEPOSIT ${s.stop}/3`,'#ffe16d');g.wanted.heat=Math.min(125,g.wanted.heat+25);g.wanted.stars=Math.min(5,Math.ceil(g.wanted.heat/25));g.wanted.lastCrime=g.playSeconds;}}
   if(i===4){if(s.phase==='pickup'&&g.vehicle)s.phase='await-car';if(s.phase==='pickup'&&near(g,diner(g),60)&&!g.vehicle){s.phase='await-car';setTask(s,'Get in a car, then return to Lena at the diner',diner(g));}else if(s.phase==='await-car'&&g.vehicle&&near(g,diner(g),60)){s.phase='final';s.lenaCar=g.vehicle;setTask(s,'Drive Lena to the marina pier before sunrise',g.world.spawnPoints.pier);s.dialogue=say('Lena',['I knew you would come. Keep the wheels turning.']);}else if(s.phase==='final'){if(!s.lenaCar||s.lenaCar.health<=0){failMission(s,'The car is gone. Lena cannot make the run on foot.');return;}if(g.vehicle!==s.lenaCar){s.phase='await-car';setTask(s,'Get back in Lena’s car',g.world.spawnPoints.diner);return;}if(near(g,g.world.spawnPoints.pier,72))success(s,g,i);}}
 }
 export function updateMissions(s,g,dt,input,parked,traffic){
@@ -79,7 +81,7 @@ export function updateMissions(s,g,dt,input,parked,traffic){
   if(s.currentMission<5&&!s.scoreRun&&!s.completion)s.storyElapsed+=dt;
   g.interacting=false;
   if(s.completion){if(!s.dialogue&&input.wasPressed('KeyE')){s.completion=null;s.completedStoryScreen=true;return;}else if(!s.dialogue)return;}
-  for(let i=0;i<s.umbrellas.length;i++)if(!g.vehicle&&!s.collectibles.includes(i)&&near(g,s.umbrellas[i],25)){s.collectibles.push(i);g.save=writeSave(g,s);}
+  for(let i=0;i<s.umbrellas.length;i++)if(!g.vehicle&&!s.collectibles.includes(i)&&near(g,s.umbrellas[i],25)){s.collectibles.push(i);pop(g,s.umbrellas[i].x,s.umbrellas[i].y-30,`COLLECTIBLE ${s.collectibles.length}/12`,'#7be3f0');g.save=writeSave(g,s);}
   if(s.dialogue){if(input.wasPressed('KeyE')||g.dialogueClick){g.dialogueClick=false;s.dialogue.index++;if(s.dialogue.index>=s.dialogue.lines.length){const d=s.dialogue.done;s.dialogue=null;if(d)d();}}return;}
   if(s.retry&&!g.vehicle&&input.wasPressed('KeyE')&&near(g,diner(g),90)){begin(s,g,s.currentMission);return;}
   if(!s.activity&&!g.vehicle&&s.currentMission<5&&near(g,diner(g),58)&&input.wasPressed('KeyE')){begin(s,g,s.currentMission);return;}
@@ -92,7 +94,7 @@ export function updateMissions(s,g,dt,input,parked,traffic){
 function updateActivities(s,g,dt,input,parked,traffic){
   if(s.activity==='taxi'){
     if(s.phase==='pickup'&&g.vehicle&&near(g,s.taxiStart,55)){s.phase='destination';s.marker=s.taxiTarget;s.objective='Take the passenger to the marked destination';s.dialogue=say('Passenger',['Thanks for stopping. I am late for the marina.']);}
-    else if(s.phase==='destination'&&g.vehicle&&near(g,s.taxiTarget,60)){const amount=Math.round(ECONOMY.taxiBase+Math.hypot(s.taxiTarget.x-s.taxiStart.x,s.taxiTarget.y-s.taxiStart.y)*ECONOMY.taxiPerUnit+Math.max(0,90-(s.elapsed||0))*2);cash(g,s,amount);s.taxiFares++;s.activity=null;s.marker=null;s.objective=`Fare complete · $${amount}`;s.dialogue=say('Dispatcher',[`Fare paid: $${amount}. Your next call is waiting.`]);}s.elapsed=(s.elapsed||0)+dt;return;
+    else if(s.phase==='destination'&&g.vehicle&&near(g,s.taxiTarget,60)){const amount=Math.round(ECONOMY.taxiBase+Math.hypot(s.taxiTarget.x-s.taxiStart.x,s.taxiTarget.y-s.taxiStart.y)*ECONOMY.taxiPerUnit+Math.max(0,90-(s.elapsed||0))*2);cash(g,s,amount);pop(g,s.taxiTarget.x,s.taxiTarget.y-44,`+$${amount} FARE`,'#ffe16d');s.taxiFares++;s.activity=null;s.marker=null;s.objective=`Fare complete · $${amount}`;s.dialogue=say('Dispatcher',[`Fare paid: $${amount}. Your next call is waiting.`]);}s.elapsed=(s.elapsed||0)+dt;return;
   }
   if(near(g,g.world.spawnPoints.garage,80)){s.objective='Marlin Auto Works · 1 repair';}
   if(!g.vehicle&&near(g,diner(g),75)){s.objective=s.currentMission>=5?'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay':'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay';}

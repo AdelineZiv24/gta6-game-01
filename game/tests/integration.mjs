@@ -17,6 +17,8 @@ const before=writes;location.search='?shot=mission';const shot=await import('../
 const {createWorld}=await import('../src/world.js');
 const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar}=await import('../src/vehicles.js');
 const {createPolice,spawnPolice,updatePolice}=await import('../src/police.js');
+const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
+const {createPedestrians,updatePedestrians}=await import('../src/pedestrians.js');
 const seeded=createWorld('1'),again=createWorld('1');
 assert.equal(JSON.stringify(seeded),JSON.stringify(again));
 assert(seeded.buildings.every(building=>building.rooftop.some(prop=>prop.kind==='ac')));
@@ -39,6 +41,10 @@ const passing=createCar(1020,lane+31,0,1);const near=createVehicleEffects();
 updateVehicleEffects(near,[playerCar,passing],seeded,playerCar,1/60);
 passing.x=25+playerCar.x;updateVehicleEffects(near,[playerCar,passing],seeded,playerCar,1/60);
 assert(near.shake>1.1,'clean close pass gives a small near-miss shake');
+const combo=createVehicleEffects(),comboPopups=createPopups(),passingCar=createCar(1020,lane+31,0,1);
+updateVehicleEffects(combo,[playerCar,passingCar],seeded,playerCar,1/60,comboPopups);passingCar.x=25+playerCar.x;updateVehicleEffects(combo,[playerCar,passingCar],seeded,playerCar,1/60,comboPopups);assert.equal(combo.popup.text,'NEAR MISS');assert.equal(combo.nearChain,1);
+for(let index=0;index<3;index++)updateVehicleEffects(combo,[playerCar],seeded,playerCar,.35);
+passingCar.x=1020;passingCar.y=lane+31;updateVehicleEffects(combo,[playerCar,passingCar],seeded,playerCar,1/60,comboPopups);passingCar.x=25+playerCar.x;updateVehicleEffects(combo,[playerCar,passingCar],seeded,playerCar,1/60,comboPopups);assert.equal(combo.popup.text,'NEAR MISS ×2');assert.equal(combo.nearChain,2);assert(comboPopups.list.some(entry=>entry.life>0&&entry.text==='NEAR MISS ×2'));console.log('Near-miss combo chain and floating popup: PASS');
 const touching=createVehicleEffects();passing.y=lane+20;passing.x=playerCar.x;
 updateVehicleEffects(touching,[playerCar,passing],seeded,playerCar,1/60);
 passing.x+=5;updateVehicleEffects(touching,[playerCar,passing],seeded,playerCar,1/60);
@@ -52,6 +58,8 @@ assert(aiEffects.particles.some(particle=>particle.spark&&particle.life>0),'AI c
 const wallCar=createCar(1000,lane,0,1,undefined,'player-driven');wallCar.speed=wallCar.vx=180;
 const wallEffects=createVehicleEffects();updateCar(wallCar,{isDown:()=>false},{water:seeded.water,collidesCircle:()=>true},1/60,wallEffects);
 assert(wallEffects.particles.some(particle=>particle.life>0&&!particle.spark),'wall contact emits dust');
+const popupTest=createPopups(),popupA=spawnPopup(popupTest,100,200,'TEST A'),popupB=spawnPopup(popupTest,300,400,'TEST B','#7be3f0');assert(popupA&&popupB&&popupA.text==='TEST A'&&popupB.text==='TEST B'&&popupA.life>0&&popupB.life>0);updatePopups(popupTest,2);assert.equal(popupA.life,0);assert.equal(popupB.life,0);const pinned=spawnPopup(popupTest,0,0,'PINNED','#ffe16d',999);updatePopups(popupTest,3);assert(pinned.life>0);assert.equal(spawnPopup(null,0,0,'x'),null);console.log('Popup pool lifecycle and null safety: PASS');
+const pool=createPedestrians(seeded,playerCar);assert.equal(pool.people.length,96);assert(new Set(pool.people.map(person=>person.shirt)).size>=10);assert(pool.people.every(person=>person.pants));const walker=pool.people[0];Object.assign(walker,{x:1000,y:lane,state:'walk',panic:0,pause:0});const threatCar=createCar(940,lane,0,1,undefined,'traffic-driven');threatCar.speed=threatCar.vx=170;updatePedestrians(pool,seeded,{x:1000,y:lane},[threatCar],[],1/60,()=>{});assert(walker.panic>0);assert(Math.hypot(walker.x-threatCar.x,walker.y-threatCar.y)>60);console.log('Crowd density, palettes, pants and dodge impulse: PASS');
 for(let index=0;index<1000;index++)emitVehicleImpact(effects,1000,lane,200,true);
 for(let index=0;index<700;index++){car.x+=2;car.heading+=.03;updateVehicleEffects(effects,[car],seeded,null,1/60);}
 assert(effects.markCursor>420,'skid pool wraps safely under sustained turning');
@@ -108,7 +116,7 @@ for(const scene of ['start','mission','foot','chase','cover']){
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
  if(scene==='chase'){assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);}
  if(scene==='cover'){
-  assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS');assert(staged.vehicleEffects.markCursor>0);
+  assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS ×3');assert.equal(staged.vehicleEffects.nearChain,3);assert(staged.popups.list.some(entry=>entry.life>0&&entry.text==='NEAR MISS ×3'));assert(staged.vehicleEffects.markCursor>0);
   assert(staged.police.heli);assert([staged.police.heli.x,staged.police.heli.y].every(Number.isFinite));
   assert.equal(staged.combat.weapon,'pistol');assert.equal(staged.combat.ammo,12);assert.equal(staged.combat.reserve,36);
  }
