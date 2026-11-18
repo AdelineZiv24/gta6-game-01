@@ -127,7 +127,14 @@ function startGame(foot = false, record=null) {
   if(record?.pistolGranted)grantPistol(game,48);
   if(record?.currentCar){game.vehicle=createCar(record.currentCar.x,record.currentCar.y,record.currentCar.heading,modelByName(record.currentCar.model),record.currentCar.color,'player-driven');game.vehicle.health=record.currentCar.health;parked.push(game.vehicle);game.player.x=game.vehicle.x;game.player.y=game.vehicle.y;}
   traffic=createTraffic(world,game.player);pedestrians=createPedestrians(world,game.player);
-  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<2;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+(i?20:-20),0);u.car.speed=180;}game.police.spawnTimer=5;}
+  if(shot==='foot'){
+    const road=world.roads.vertical.reduce((best,item)=>Math.abs(item.x-game.player.x)<Math.abs(best.x-game.player.x)?item:best);
+    const taxi=createCar(road.x,game.player.y+170,Math.PI/2,5,undefined,'traffic-driven');taxi.speed=115;traffic.cars.push(taxi);
+    pedestrians.people.push(...Array.from({length:5},(_,i)=>{const p={...pedestrians.people[i],x:road.x-58+i*25,y:game.player.y+105,facing:Math.PI/2,state:'walk',pause:0};return p;}));
+  }
+  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<2;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+(i?20:-20),0);u.car.speed=180;}game.police.spawnTimer=5;
+    const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+190+i*75,road.y+20,0,i+1,undefined,'traffic-driven');car.speed=92;traffic.cars.push(car);}
+  }
   collectCars();
   renderer.camera.x = spawn.x; renderer.camera.y = spawn.y; renderer.camera.clamp();
   if(shot==='mission'){game.player.x=game.player.previousX=world.spawnPoints.diner.x+70;game.player.y=game.player.previousY=world.spawnPoints.diner.y;renderer.camera.x=game.player.x;renderer.camera.y=game.player.y;renderer.camera.clamp();game.missions.currentMission=0;game.missions.activity='mission';game.missions.phase='package';game.missions.elapsed=55;game.missions.marker=world.spawnPoints.pier;game.missions.objective='Deliver Lena’s package to the marina pier';game.missions.dialogue={speaker:'Lena',lines:['Take this across town to the pier. The marina guard knows to expect you.'],index:0};game.objective={text:game.missions.objective,position:game.missions.marker};}

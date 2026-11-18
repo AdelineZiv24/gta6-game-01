@@ -23,7 +23,7 @@ function spawn(world,focus) {
     car.route={col,row,direction:d};next(car,world);car.speed=65+random()*35;return car;
   }return null;
 }
-export function createTraffic(world,focus){const cars=[];for(let i=0;i<22;i++){const car=spawn(world,focus);if(car)cars.push(car);}return {cars,timer:0};}
+export function createTraffic(world,focus){const cars=[];for(let i=0;i<28;i++){const car=spawn(world,focus);if(car)cars.push(car);}return {cars,timer:0};}
 export function updateTraffic(traffic,world,focus,allCars,pedestrians,dt,onFlee) {
   traffic.timer-=dt;
   for(let i=traffic.cars.length-1;i>=0;i--){const car=traffic.cars[i];

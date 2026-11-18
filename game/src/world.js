@@ -53,6 +53,10 @@ export function createWorld(seed = WORLD.seed) {
       windowRows: building.windowRows ?? randomInt(random, 2, 5),
       windowCols: building.windowCols ?? randomInt(random, 3, 7),
       windowPattern: Array.from({ length: (building.windowRows ?? 3) * (building.windowCols ?? 4) }, () => random() > .18),
+      storefront: !building.landmark && building.width > 125 && random() > .42 ? {
+        sign: pick(random, ['BAYFRONT MARKET', 'SALT & SAIL', 'SUNLINE CAFE', 'CORAL CYCLES', 'PALM CORNER', 'TIDEMARK GOODS']),
+        color: pick(random, ['#d85d4e', '#287f86', '#d39b39', '#47704f']),
+      } : null,
       landmark: Boolean(building.landmark),
     };
     buildings.push(item);
@@ -77,7 +81,7 @@ export function createWorld(seed = WORLD.seed) {
       const count = landmark ? 1 : isLot || isPark ? 0 : randomInt(random, 4, 6);
       if (isLot) {
         lots.push({ x: cell.x + 35, y: cell.y + 45, width: cell.width - 70, height: cell.height - 90 });
-        for (let bay = 0; bay < 8; bay++) parkingSpots.push({ x: cell.x + 72 + (bay % 4) * 62, y: cell.y + 102 + Math.floor(bay / 4) * 105, heading: Math.PI / 2, width: 30, length: 54, lot: true });
+        for (let bay = 0; bay < 12; bay++) parkingSpots.push({ x: cell.x + 56 + (bay % 4) * 78, y: cell.y + 78 + Math.floor(bay / 4) * 82, heading: Math.PI / 2, width: 30, length: 54, lot: true });
       }
       if (isPark) {
         props.push({ kind: 'fountain', x: cell.x + cell.width / 2, y: cell.y + cell.height / 2, scale: 1, rotation: 0 });
@@ -119,7 +123,7 @@ export function createWorld(seed = WORLD.seed) {
         props.push({ kind: 'lamp', x, y: cell.y + 22, scale: 0.85, rotation: 0 });
       }
       const kerbY = cell.y - 15;
-      for (let spot = 0; spot < 4; spot += 1) parkingSpots.push({ x: cell.x + 65 + spot * 72, y: kerbY, heading: 0, width: 30, length: 54 });
+      for (let spot = 0; spot < 5; spot += 1) parkingSpots.push({ x: cell.x + 48 + spot * 70, y: kerbY, heading: 0, width: 30, length: 54 });
     }
   }
 
@@ -127,6 +131,9 @@ export function createWorld(seed = WORLD.seed) {
   const water = { x: 0, y: CITY.waterStartY, width: WORLD.width, height: WORLD.height - CITY.waterStartY };
   const pier = { x: WORLD.width - 500, y: CITY.waterStartY - 24, width: 400, height: 220 };
   for (let index = 0; index < 9; index += 1) props.push({ kind: 'palm', x: 70 + index * 430, y: CITY.beachStartY + 55 + (index % 2) * 38, scale: 1.2, rotation: 0 });
+  for (let index = 0; index < 14; index += 1) props.push({ kind: 'palm', x: 120 + index * 310, y: CITY.beachStartY - 28, scale: 1.05, rotation: 0 });
+  for (let index = 0; index < 3; index += 1) props.push({ kind: 'billboard', x: 520 + index * 1420, y: 220 + (index % 2) * 1050, scale: 1, rotation: 0, slogan: ['CORAL BAY: STAY FOR THE SUN', 'THE COAST IS YOURS', 'LIVE WELL. GO TIDAL.'][index] });
+  for (const cell of [{x:blockStartX+pitchX*2,y:blockStartY+pitchY*3},{x:blockStartX+pitchX*6,y:blockStartY+pitchY*2}]) props.push({kind:'shelter',x:cell.x+CITY.blockWidth-24,y:cell.y+CITY.blockHeight/2,scale:1,rotation:Math.PI/2});
   for (let index = 0; index < 24; index += 1) props.push({ kind: index % 2 ? 'towel' : 'umbrella', x: 130 + index * 168, y: CITY.beachStartY + 110 + (index % 4) * 34, scale: .8 + random() * .3, rotation: randomRange(random, -.4, .4) });
   for (let index = 0; index < 7; index += 1) boats.push({ x: WORLD.width - 390 + (index % 3) * 105, y: CITY.waterStartY + 72 + Math.floor(index / 3) * 58, heading: index % 2 ? .12 : -.1, length: 42 + index % 3 * 12 });
   spawnPoints.pier = { x: pier.x + pier.width - 35, y: water.y - 65, heading: 0 };

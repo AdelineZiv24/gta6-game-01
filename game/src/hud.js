@@ -13,9 +13,11 @@ export function drawHUD(ctx, game) {
   const minutes = Math.floor(game.clockMinutes) % 1440;
   ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}  •  CORAL BAY`,w-34,75);
   if (objective?.text) {
-    const bw=Math.min(440,w-40); const top=w<1000?126:22;
-    panel((w-bw)/2,top,bw,54);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 10px ${FONT}`;ctx.fillText('YOUR NEXT MOVE',(w)/2,top+15);
-    ctx.fillStyle='#fff3dc';ctx.font=`13px ${FONT}`;ctx.fillText(objective.text,w/2,top+35,bw-24);
+    const bw=Math.min(560,w-40); const top=w<1000?122:22;
+    panel((w-bw)/2,top,bw,66);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText('CURRENT OBJECTIVE',(w)/2,top+17);
+    ctx.fillStyle='#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(objective.text,w/2,top+43,bw-28);
+    if(objective.position){const dx=objective.position.x-player.x,dy=objective.position.y-player.y,distance=Math.hypot(dx,dy);ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText(`${Math.round(distance)} m`,w/2,top+59);}
+    if(objective.position){const dx=objective.position.x-player.x,dy=objective.position.y-player.y,a=Math.atan2(dy,dx),edgeX=w/2+Math.cos(a)*Math.min(w*.38,380),edgeY=h/2+Math.sin(a)*Math.min(h*.32,255);ctx.save();ctx.translate(edgeX,edgeY);ctx.rotate(a);ctx.fillStyle='#ffe16d';ctx.strokeStyle='#173d46';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(15,0);ctx.lineTo(-10,-10);ctx.lineTo(-6,0);ctx.lineTo(-10,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
   }
   if(game.missions?.dialogue){const d=game.missions.dialogue,line=d.lines[d.index]||'';const bw=Math.min(620,w-40),words=line.split(' '),lines=[];let row='';ctx.font=`14px ${FONT}`;for(const word of words){if(row&&ctx.measureText(row+' '+word).width>bw-40){lines.push(row);row=word;}else row+=(row?' ':'')+word;}if(row)lines.push(row);const bh=70+lines.length*20,x=(w-bw)/2,y=h-bh-252;ctx.fillStyle='#103c48f2';ctx.beginPath();ctx.roundRect(x,y,bw,bh,8);ctx.fill();ctx.fillStyle='#f9d777';ctx.textAlign='left';ctx.font=`bold 14px ${FONT}`;ctx.fillText(d.speaker,x+20,y+24);ctx.fillStyle='#fff3dc';ctx.font=`14px ${FONT}`;lines.forEach((text,i)=>ctx.fillText(text,x+20,y+50+i*20));ctx.textAlign='right';ctx.font=`10px ${FONT}`;ctx.fillText('E / CLICK',x+bw-18,y+bh-18);}
   if(game.missions?.retry){ctx.textAlign='center';ctx.fillStyle='#ffe39a';ctx.font=`bold 14px ${FONT}`;ctx.fillText('MISSION FAILED · RETURN TO THE DINER · E TO RETRY',w/2,h*.56);}
@@ -29,13 +31,14 @@ export function drawHUD(ctx, game) {
   if (objective?.position) {
     let dx=(objective.position.x-player.x)*scale,dy=(objective.position.y-player.y)*scale;
     const d=Math.hypot(dx,dy),limit=radius-12;if(d>limit){dx*=limit/d;dy*=limit/d;}
-    ctx.fillStyle='#ffdc59';ctx.strokeStyle='#57451e';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+dx,cy+dy,6,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fa6d55';ctx.strokeStyle='#fff4d8';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+dx,cy+dy,6,0,Math.PI*2);ctx.fill();ctx.stroke();
   }
+  for(const unit of game.police?.units||[]){const dx=(unit.car.x-player.x)*scale,dy=(unit.car.y-player.y)*scale;ctx.fillStyle='#56c9e5';ctx.strokeStyle='#123d5b';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),4,0,Math.PI*2);ctx.fill();ctx.stroke();}
   ctx.translate(cx,cy);ctx.rotate(player.facing);if(game.vehicle){ctx.fillStyle=game.vehicle.color;ctx.fillRect(-10,-5,20,10);ctx.fillStyle='#173c49';ctx.fillRect(-3,-4,7,8);}else {ctx.fillStyle='#fff9e6';ctx.strokeStyle='#17424b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(-7,7);ctx.lineTo(-3,0);ctx.lineTo(-7,-7);ctx.closePath();ctx.fill();ctx.stroke();}ctx.restore();
   ctx.strokeStyle='#fff1d9';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();ctx.textAlign='center';ctx.fillStyle='#163e47';ctx.font=`bold 11px ${FONT}`;ctx.fillText('N',cx,cy-radius+13);
   if(game.vehicle){panel(w-234,h-100,214,76);ctx.textAlign='right';ctx.fillStyle='#fff3dc';ctx.font=`bold 13px ${FONT}`;ctx.fillText(game.vehicle.model.name,w-34,h-79);ctx.fillStyle='#f9d777';ctx.font=`bold 26px ${FONT}`;ctx.fillText(`${Math.round(Math.abs(game.vehicle.speed)*.32)} km/h`,w-34,h-49);}
   const wanted=game.wanted;
-  if(wanted){const wy=w<1000?190:104;panel(w-230,wy,210,76);ctx.textAlign='right';ctx.font=`bold 29px ${FONT}`;ctx.fillStyle='#f9d777';ctx.fillText('★'.repeat(wanted.stars)+'☆'.repeat(5-wanted.stars),w-34,wy+24);
+  if(wanted){const wy=w<1000?190:104;panel(w-230,wy,210,76);ctx.textAlign='right';ctx.font=`bold 35px ${FONT}`;ctx.fillStyle='#f9d777';ctx.globalAlpha=wanted.stars>=3?.82+.18*Math.sin(game.playSeconds*5):1;ctx.fillText('★'.repeat(wanted.stars)+'☆'.repeat(5-wanted.stars),w-34,wy+24);ctx.globalAlpha=1;
     ctx.font=`bold 10px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText(wanted.stars?(wanted.seen?'CBPD • IN SIGHT':'CBPD • SEARCHING'):'CORAL BAY POLICE DEPARTMENT',w-34,wy+47);
     if(wanted.stars&&!wanted.seen){ctx.fillStyle='#ffffff28';ctx.fillRect(w-214,wy+61,180,5);ctx.fillStyle='#71d3d9';ctx.fillRect(w-214,wy+61,180*wanted.evade,5);}
   }

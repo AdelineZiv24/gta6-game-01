@@ -90,6 +90,14 @@ function drawBuilding(context, building, night = 0) {
   context.fillRect(x + 5, y + 5, width - 10, height - 10);
   context.fillStyle = building.facade;
   context.fillRect(x + 11, y + 11, width - 22, height - 22);
+  if (building.storefront) {
+    const awningY = y + height - 30;
+    context.fillStyle = '#fff2d5'; context.fillRect(x + 12, awningY - 4, width - 24, 5);
+    context.fillStyle = building.storefront.color; context.fillRect(x + 12, awningY, width - 24, 10);
+    context.fillStyle = '#fff8df'; context.fillRect(x + width * .28, y + height - 17, width * .44, 17);
+    context.fillStyle = building.storefront.color; context.font = `bold 8px ${FONT}`; context.textAlign = 'center'; context.textBaseline = 'middle';
+    context.fillText(building.storefront.sign, x + width / 2, y + height - 12, width * .42);
+  }
   const padX = Math.max(14, width * 0.1);
   const padY = Math.max(16, height * 0.12);
   const gapX = (width - padX * 2) / building.windowCols;
@@ -126,6 +134,16 @@ function drawProp(context, prop, night = 0) {
     context.fillStyle = '#d7ddd0'; context.fillRect(-4, -18, 8, 20);
   } else if (prop.kind === 'path') {
     context.fillStyle = '#d7bd8c'; context.fillRect(-(prop.width || 18) / 2, -(prop.height || 18) / 2, prop.width || 18, prop.height || 18);
+  } else if (prop.kind === 'billboard') {
+    context.fillStyle = '#4a5554'; context.fillRect(-3, 0, 6, 38);
+    context.fillStyle = '#f4e2b9'; context.fillRect(-74, -38, 148, 39);
+    context.fillStyle = '#d45748'; context.fillRect(-74, -38, 148, 6);
+    context.fillStyle = '#285c60'; context.font = `bold 9px ${FONT}`; context.textAlign = 'center'; context.textBaseline = 'middle';
+    context.fillText(prop.slogan, 0, -17, 136);
+  } else if (prop.kind === 'shelter') {
+    context.fillStyle = '#4b7777'; context.fillRect(-28, -15, 56, 4); context.fillRect(-25, -11, 3, 24); context.fillRect(22, -11, 3, 24);
+    context.fillStyle = 'rgba(207,239,230,.72)'; context.fillRect(-22, -9, 44, 17);
+    context.fillStyle = '#315a60'; context.fillRect(-30, 8, 60, 5);
   } else {
     context.fillStyle = '#d75b50'; context.fillRect(-3, -7, 6, 14); context.fillStyle = '#eee5d4'; context.fillRect(-4, -2, 8, 3);
   }
@@ -148,6 +166,9 @@ function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
   context.strokeStyle = '#d1ae7d'; context.lineWidth = 6;
   for (let x = world.pier.x + 20; x < world.pier.x + world.pier.width; x += 44) { context.beginPath(); context.moveTo(x, world.pier.y); context.lineTo(x, world.pier.y + world.pier.height); context.stroke(); }
   drawRoads(context, world, view);
+  context.strokeStyle = 'rgba(255,239,187,.62)'; context.lineWidth = 2; context.setLineDash([18, 24]);
+  for (const road of world.roads.horizontal) if (road.width >= 90 && visible({x:view.x,y:road.y-road.width/2,width:view.width,height:road.width},view)) { context.beginPath(); context.moveTo(view.x,road.y); context.lineTo(view.x+view.width,road.y); context.stroke(); }
+  context.setLineDash([]);
   context.fillStyle = PALETTE.sidewalk;
   for (const sidewalk of world.sidewalks) if (visible(sidewalk, view)) context.fillRect(sidewalk.x, sidewalk.y, sidewalk.width, sidewalk.height);
   context.fillStyle = 'rgba(35, 40, 43, 0.18)';
