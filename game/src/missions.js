@@ -6,6 +6,7 @@ import { spawnPopup } from './popups.js';
 import { awardRep, REP_MISSION, REP_TAXI, REP_COLLECTIBLE, REP_DEPOSIT } from './rep.js';
 import { startRace, raceStartPoint } from './race.js';
 import { startRampage, rampageStartPoint } from './rampage.js';
+import { fishingPoint } from './fishing.js';
 
 export const MISSIONS = [
   { id:'first-shift', name:'First Shift', reward:ECONOMY.firstShift, time:240 },
@@ -16,10 +17,18 @@ export const MISSIONS = [
   { id:'pier-escape', name:'Pier Escape', reward:ECONOMY.pierEscape, time:360 },
 ];
 const point=(x,y)=>({x,y});
+export const TAXI_PASSENGERS = [
+  { name:'Marisol Vega', quip:'The marina, please. My boat leaves with the tide.' },
+  { name:'Tomas Rey', quip:'Beach road if you can, friend. I never tire of that view.' },
+  { name:'Priya Nair', quip:'Quick as you like — my sister is docking at the pier today.' },
+  { name:'Ilya Sorin', quip:'To the pier, driver. And mind the gulls — they own this town.' },
+  { name:'Bea Fontaine', quip:'Marina side. If I am late, the fish market hears about it.' },
+  { name:'Rico Alvarez', quip:'Pier end, friend. Best fishing in the bay, trust me.' },
+];
 const pop=(g,x,y,text,color)=>spawnPopup(g.popups,x,y,text,color);
 export function createMissionState(save=null) {
   const completed=[...(save?.completed||[])];
-  return { completed, currentMission:save?.currentMission??completed.length, collectibles:[...(save?.collectibles||[])], bestTimes:{...(save?.bestTimes||{})}, taxiFares:save?.taxiFares||0, totalEarned:save?.totalEarned||0, activity:null, dialogue:null, retry:false, completion:null, completedFinaleScreen:false, storyElapsed:save?.storyElapsed||0, umbrellas: Array.from({length:12},(_,i)=>point(250+i*345,3160+(i%3)*42)), taxiTarget:null, rival:null, courier:null, van:null, stop:0, elapsed:0, phase:'diner', marker:null, objective:'Meet Lena Marsh at the Marlin Diner' };
+  return { completed, currentMission:save?.currentMission??completed.length, collectibles:[...(save?.collectibles||[])], bestTimes:{...(save?.bestTimes||{})}, taxiFares:save?.taxiFares||0, totalEarned:save?.totalEarned||0, activity:null, dialogue:null, retry:false, completion:null, completedFinaleScreen:false, storyElapsed:save?.storyElapsed||0, umbrellas: Array.from({length:12},(_,i)=>point(250+i*345,3160+(i%3)*42)), taxiTarget:null, taxiPassengerIndex:0, taxiPassenger:null, rival:null, courier:null, van:null, stop:0, elapsed:0, phase:'diner', marker:null, objective:'Meet Lena Marsh at the Marlin Diner' };
 }
 function say(speaker, lines, done=null) { return {speaker,lines,index:0,done}; }
 function setTask(s,text,target) { s.objective=text;s.marker=target; }
@@ -98,19 +107,21 @@ export function updateMissions(s,g,dt,input,parked,traffic){
   if(s.activity==='mission'&&(g.player.health<=0||g.police?.arrest>=1)){failMission(s,g.player.health<=0?'You were wasted.':'You were busted.');return;}
   if(s.activity==='race')return;
   if(s.activity==='rampage')return;
+  if(s.activity==='fishing')return;
   if(s.activity==='mission'&&g.vehicle)g.vehicle.fuel=Math.max(g.vehicle.fuel??100,40);
   if(s.activity==='taxi'){updateActivities(s,g,dt,input,parked,traffic);return;}
   if(s.phase!=='start')activeStep(s,g,dt,parked);
 }
 function updateActivities(s,g,dt,input,parked,traffic){
   if(s.activity==='taxi'){
-    if(s.phase==='pickup'&&g.vehicle&&near(g,s.taxiStart,55)){s.phase='destination';s.marker=s.taxiTarget;s.objective='Take the passenger to the marked destination';s.dialogue=say('Passenger',['Thanks for stopping. I am late for the marina.']);}
+    if(s.phase==='pickup'&&g.vehicle&&near(g,s.taxiStart,55)){s.phase='destination';s.marker=s.taxiTarget;s.objective='Take the passenger to the marked destination';s.dialogue=say(s.taxiPassenger?.name||'Passenger',[s.taxiPassenger?.quip||'Thanks for stopping. I am late for the marina.']);}
     else if(s.phase==='destination'&&g.vehicle&&near(g,s.taxiTarget,60)){const amount=Math.round(ECONOMY.taxiBase+Math.hypot(s.taxiTarget.x-s.taxiStart.x,s.taxiTarget.y-s.taxiStart.y)*ECONOMY.taxiPerUnit+Math.max(0,90-(s.elapsed||0))*2);cash(g,s,amount);pop(g,s.taxiTarget.x,s.taxiTarget.y-44,`+$${amount} FARE`,'#ffe16d');s.taxiFares++;awardRep(g, REP_TAXI);s.activity=null;s.marker=null;s.objective=`Fare complete · $${amount}`;s.dialogue=say('Dispatcher',[`Fare paid: $${amount}. Your next call is waiting.`]);}s.elapsed=(s.elapsed||0)+dt;return;
   }
   if(near(g,g.world.spawnPoints.garage,80)){s.objective='Marlin Auto Works · 1 repair';}
   if(!g.vehicle&&near(g,diner(g),75)){s.objective=s.currentMission>=5?'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay':'Marlin Diner · 1 taxi / 2 armour / 3 payphone replay';}
   const raceStart=raceStartPoint(g.world);if(near(g,raceStart,95)){s.objective=g.vehicle?'Beach Road · 4 STREET RACE':'Beach Road · STREET RACE — bring a car, press 4';if(g.vehicle&&input.wasPressed('Digit4')&&g.race)startRace(g.race,g);}
   const rampageStart=rampageStartPoint(g.world);if(near(g,rampageStart,95)){s.objective=g.vehicle?'Downtown · 5 RAMPAGE':'Downtown · RAMPAGE — bring a car, press 5';if(g.vehicle&&input.wasPressed('Digit5')&&g.rampage)startRampage(g.rampage,g);}
+  const fishSpot=fishingPoint(g.world);if(!g.vehicle&&near(g,fishSpot,95)){s.objective='Marina Pier · FISHING — stand at the waterline, press E';}
   if(near(g,g.world.spawnPoints.garage,80)&&g.vehicle&&input.wasPressed('Digit1')&&g.player.cash>=ECONOMY.repair){g.player.cash-=ECONOMY.repair;g.vehicle.health=100;s.objective='Vehicle repaired';}
   else if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit2')&&g.player.cash>=ECONOMY.armour){g.player.cash-=ECONOMY.armour;g.player.armour=100;s.objective='Armour refilled';}
   if(!g.vehicle&&near(g,diner(g),75)&&input.wasPressed('Digit1'))startTaxi(s,g);
@@ -121,4 +132,4 @@ export function drawMissionWorld(ctx,s,g,time){
   if(marker){const pulse=1+Math.sin(time*.005)*.12;ctx.save();ctx.strokeStyle='#ffe16dcc';ctx.fillStyle='#ffe16d22';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(marker.x,marker.y+4,29*pulse,13*pulse,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.globalAlpha=.32+Math.sin(time*.004)*.08;ctx.fillStyle='#ffdc62';ctx.beginPath();ctx.moveTo(marker.x-12,marker.y);ctx.lineTo(marker.x+12,marker.y);ctx.lineTo(marker.x+5,marker.y-100);ctx.lineTo(marker.x-5,marker.y-100);ctx.closePath();ctx.fill();ctx.restore();}
   for(let i=0;i<s.umbrellas.length;i++)if(!s.collectibles.includes(i)){const p=s.umbrellas[i];ctx.fillStyle='#e85f51';ctx.fillRect(p.x-10,p.y-4,20,5);ctx.fillStyle='#fff0d2';ctx.beginPath();ctx.arc(p.x,p.y-4,11,Math.PI,Math.PI*2);ctx.fill();}
 }
-export function startTaxi(s,g){s.activity='taxi';s.phase='pickup';s.elapsed=0;s.taxiStart=point(g.world.spawnPoints.hospital.x+40,g.world.spawnPoints.hospital.y);s.taxiTarget=point(g.world.spawnPoints.pier.x-200,g.world.spawnPoints.pier.y);s.marker=s.taxiStart;s.objective='Taxi dispatch: pick up the flagged passenger by Coral Bay General';s.dialogue=say('Dispatcher',['A fare is waiting near General. Marina drop-off. Keep the meter honest.']);}
+export function startTaxi(s,g){s.activity='taxi';s.phase='pickup';s.elapsed=0;s.taxiPassenger=TAXI_PASSENGERS[(s.taxiPassengerIndex||0)%TAXI_PASSENGERS.length];s.taxiPassengerIndex=(s.taxiPassengerIndex||0)+1;s.taxiStart=point(g.world.spawnPoints.hospital.x+40,g.world.spawnPoints.hospital.y);s.taxiTarget=point(g.world.spawnPoints.pier.x-200,g.world.spawnPoints.pier.y);s.marker=s.taxiStart;s.objective='Taxi dispatch: pick up the flagged passenger by Coral Bay General';s.dialogue=say('Dispatcher',['A fare is waiting near General. Marina drop-off. Keep the meter honest.']);}

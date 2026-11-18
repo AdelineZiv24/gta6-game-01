@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createMissionState,updateMissions,failMission,startTaxi,MISSIONS,drawMissionWorld} from '../src/missions.js';
+import {createMissionState,updateMissions,failMission,startTaxi,MISSIONS,drawMissionWorld,TAXI_PASSENGERS} from '../src/missions.js';
 import {createWorld} from '../src/world.js';
 import {createPlayer} from '../src/player.js';
 import {createCar,carBlocked,resolveCarContacts,MODELS} from '../src/vehicles.js';
@@ -33,6 +33,16 @@ assert(chain.missions.completion);tick(chain,'KeyE');assert.equal(chain.missions
 for(let i=0;i<5;i++){for(const kind of ['timer','busted','wasted']){const g=fixture({currentMission:i});begin(g);if(kind==='timer')tick(g,null,MISSIONS[i].time+1);else {if(kind==='wasted')g.player.health=0;else g.police.arrest=1;tick(g);}assert(g.missions.retry);talk(g);begin(g);assert.equal(g.missions.elapsed,0);assert.equal(g.missions.currentMission,i);assert.equal(g.cars.filter(c=>c.driver==='rival-driven').length,i===2?1:0);finish(g,i);}console.log(`${MISSIONS[i].id}: timer/busted/wasted failure + retry PASS`);}
 const a=fixture({currentMission:5,completed:[0,1,2,3,4]});a.player.cash=10000;startTaxi(a.missions,a);talk(a);at(a,a.missions.taxiStart,true);tick(a);talk(a);at(a,a.missions.taxiTarget,true);tick(a);assert.equal(a.missions.taxiFares,1);assert(a.popups.list.some(entry=>entry.life>0&&entry.text.includes('FARE')));talk(a);at(a,world.spawnPoints.garage,true);a.vehicle.health=20;let cash=a.player.cash;tick(a,'Digit1');assert.equal(a.player.cash,cash-260);assert.equal(a.vehicle.health,100);at(a,world.spawnPoints.diner);cash=a.player.cash;tick(a,'Digit2');assert.equal(a.player.cash,cash-220);assert.equal(a.player.armour,100);at(a,a.missions.umbrellas[0]);tick(a);assert.deepEqual(a.missions.collectibles,[0]);assert(a.popups.list.some(entry=>entry.life>0&&entry.text.includes('COLLECTIBLE 1/12')));at(a,world.spawnPoints.diner);tick(a,'Digit3');talk(a);finish(a,4);assert.equal(a.missions.currentMission,5);assert(a.missions.bestTimes['sunrise-run-replay']>=0);
 chain.missions.collectibles=[1,3];writeSave(chain,chain.missions);const record=loadSave();assert.equal(record.cash,chain.player.cash);assert.deepEqual(record.completed,[0,1,2,3,4]);assert(record.pistolGranted);assert.deepEqual(record.collectibles,[1,3]);assert.deepEqual(record.bestTimes,chain.missions.bestTimes);const count=writes;chain.shot='mission';writeSave(chain,chain.missions);assert.equal(writes,count);
+{
+ const g=fixture({currentMission:5,completed:[0,1,2,3,4]});
+ assert(TAXI_PASSENGERS.length>=6);assert(TAXI_PASSENGERS.every(p=>p.name&&p.quip));assert.equal(new Set(TAXI_PASSENGERS.map(p=>p.name)).size,TAXI_PASSENGERS.length);
+ startTaxi(g.missions,g);talk(g);assert.equal(g.missions.taxiPassenger,TAXI_PASSENGERS[0]);
+ at(g,g.missions.taxiStart,true);tick(g);assert.equal(g.missions.dialogue?.speaker,TAXI_PASSENGERS[0].name);assert.equal(g.missions.dialogue?.lines[0],TAXI_PASSENGERS[0].quip);
+ talk(g);at(g,g.missions.taxiTarget,true);tick(g);talk(g);assert.equal(g.missions.taxiFares,1);
+ startTaxi(g.missions,g);talk(g);assert.equal(g.missions.taxiPassenger,TAXI_PASSENGERS[1]);
+ at(g,g.missions.taxiStart,true);tick(g);assert.equal(g.missions.dialogue?.speaker,TAXI_PASSENGERS[1].name);
+}
+console.log('Taxi passenger personas rotate per fare: PASS');
 for(const p of [world.spawnPoints.pier,world.spawnPoints.diner,world.spawnPoints.garage,a.missions.taxiStart,a.missions.taxiTarget]){assert(!world.collidesCircle(p.x,p.y,12));assert(p.y+30<world.water.y);}
 const ctx=new Proxy({measureText:t=>({width:t.length*7})},{get:(o,k)=>k in o?o[k]:(...args)=>{},set:(o,k,v)=>(o[k]=v,true)});Object.assign(chain,{width:1280,height:800,pixelRatio:1,minimap:{},objective:{text:'test'},vehicle:null});ctx.textAlign='center';drawHUD(ctx,chain);drawMissionWorld(ctx,chain.missions,chain,0);
 console.log('Activities, replay, save round trip, shot isolation, marker geometry, stub canvas: PASS');

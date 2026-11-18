@@ -22,6 +22,8 @@ const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
 const {createRace,buildRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
 const {createFuelState,updateFuel,gasStations}=await import('../src/fuel.js');
 const {createRampage,startRampage,updateRampage,rampageStartPoint,rampagePayout,RAMPAGE_TIME}=await import('../src/rampage.js');
+const {createFishing,startFishing,updateFishing,fishingPoint,pickFish,FISH_SPECIES,FISHING_WINDOW}=await import('../src/fishing.js');
+const {GULL_COUNT,gullPosition,drawGulls}=await import('../src/gulls.js');
 const {districtTint}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians,drawPedestrian}=await import('../src/pedestrians.js');
 const {weatherAt,weatherLabel}=await import('../src/weather.js');
@@ -345,6 +347,32 @@ console.log('REP gains from race win and finish: PASS');
  assert.equal(rampage.phase,'done');assert.equal(rp.rep.xp,50);assert.equal(rp.rep.xp,Math.min(REP_RAMPAGE_CAP,Math.floor(650/10)));
 }
 console.log('REP gain from rampage end (score/10 capped): PASS');
+assert(FISH_SPECIES.length>=6);assert.equal(new Set(FISH_SPECIES.map(fish=>fish.name)).size,FISH_SPECIES.length);
+for(const fish of FISH_SPECIES){assert(fish.value>0);assert(fish.weight>0);assert(fish.minKg>0&&fish.maxKg>fish.minKg);}
+const pickRng=(()=>{let s=12345;return ()=>{s=(s*1103515245+12345)%2147483648;return s/2147483648;};})();const seen=new Set();for(let i=0;i<600;i++)seen.add(pickFish(pickRng).name);assert(seen.size>=4);
+console.log('Fishing species table and weighted pick: PASS');
+const fishPoint=fishingPoint(seeded);assert(fishPoint.x>seeded.pier.x&&fishPoint.x<seeded.pier.x+seeded.pier.width);assert(fishPoint.y<seeded.water.y&&fishPoint.y+12<seeded.water.y);assert(!seeded.collidesCircle(fishPoint.x,fishPoint.y,12));
+console.log('Fishing spot sits on the pier waterline: PASS');
+function fishingFixture(){const fg={world:seeded,player:{x:fishPoint.x,y:fishPoint.y,cash:0,facing:0},vehicle:null,parkedCars:[],missions:{activity:null,totalEarned:0,splash:null,objective:'',marker:null},popups:createPopups(),playSeconds:0,outcome:null,rep:createRep()};return fg;}
+let fkey=null;const finput={wasPressed:k=>k===fkey};function ftick(fishing,fg,dt,key=null){fkey=key;updateFishing(fishing,fg,dt,finput);fkey=null;}
+function toBite(fishing,fg){for(let i=0;i<40&&fishing.phase==='cast';i++)ftick(fishing,fg,0.1);assert.equal(fishing.phase,'wait');fishing.waitFor=0;ftick(fishing,fg,0.05);assert.equal(fishing.phase,'bite');}
+{
+ const fishing=createFishing(),fg=fishingFixture();ftick(fishing,fg,0.016);assert.equal(fishing.phase,'idle');ftick(fishing,fg,0.016,'KeyE');assert.equal(fishing.phase,'cast');assert.equal(fg.missions.activity,'fishing');assert.equal(fg.player.facing,Math.PI/2);assert(fg.popups.list.some(entry=>entry.life>0&&entry.text==='FISHING · CAST!'));
+ const carFishing=createFishing(),carFg=fishingFixture();carFg.vehicle=createCar(fishPoint.x,fishPoint.y,0,1,undefined,'player-driven');assert.equal(startFishing(carFishing,carFg),false);assert.equal(carFishing.phase,'idle');
+ for(let i=0;i<40&&fishing.phase==='cast';i++)ftick(fishing,fg,0.1);assert.equal(fishing.phase,'wait');assert(fishing.waitFor>=2.2&&fishing.waitFor<=4.8);fishing.waitFor=0;ftick(fishing,fg,0.05);assert.equal(fishing.phase,'bite');assert(fg.popups.list.some(entry=>entry.life>0&&entry.text==='!'));
+ const cashBefore=fg.player.cash;ftick(fishing,fg,0.05,'KeyE');assert.equal(fishing.caught,1);assert(fg.player.cash>cashBefore);assert.equal(fg.missions.totalEarned,fg.player.cash);assert.equal(fg.rep.xp,5);assert.equal(fg.missions.splash?.header,'FISHING');assert.equal(fg.missions.splash?.reward,fg.player.cash-cashBefore);assert(fg.popups.list.some(entry=>entry.life>0&&entry.text.startsWith('CAUGHT · ')));assert.equal(fishing.phase,'cast');assert.equal(fg.missions.activity,'fishing');
+ toBite(fishing,fg);const cashMiss=fg.player.cash;ftick(fishing,fg,FISHING_WINDOW+0.1);assert(fg.popups.list.some(entry=>entry.life>0&&entry.text==='IT GOT AWAY'));assert.equal(fishing.phase,'cast');assert.equal(fg.player.cash,cashMiss);assert.equal(fishing.caught,1);
+ const walkFishing=createFishing(),walkFg=fishingFixture();ftick(walkFishing,walkFg,0.016,'KeyE');assert.equal(walkFishing.phase,'cast');walkFg.player.x+=200;ftick(walkFishing,walkFg,0.016);assert.equal(walkFishing.phase,'idle');assert.equal(walkFg.missions.activity,null);
+ const bustFishing=createFishing(),bustFg=fishingFixture();ftick(bustFishing,bustFg,0.016,'KeyE');bustFg.outcome={kind:'busted'};ftick(bustFishing,bustFg,0.016);assert.equal(bustFishing.phase,'idle');assert.equal(bustFg.missions.activity,null);
+ const driveFishing=createFishing(),driveFg=fishingFixture();ftick(driveFishing,driveFg,0.016,'KeyE');driveFg.vehicle=createCar(fishPoint.x,fishPoint.y,0,1,undefined,'player-driven');ftick(driveFishing,driveFg,0.016);assert.equal(driveFishing.phase,'idle');assert.equal(driveFg.missions.activity,null);
+}
+console.log('Fishing start, cycle, catch, escape and abort paths: PASS');
+assert.equal(GULL_COUNT,6);
+for(let i=0;i<GULL_COUNT;i++){const a=gullPosition(i,5000),b=gullPosition(i,5000);assert.deepEqual(a,b);assert(a.x>0&&a.x<4320);assert(a.y>3050&&a.y<3420);}
+assert([0,1,2,3,4,5].some(i=>{const a=gullPosition(i,0),b=gullPosition(i,9000);return Math.hypot(a.x-b.x,a.y-b.y)>40;}));
+assert([0,1,2,3,4,5].every(i=>{const early=gullPosition(i,0),late=gullPosition(i,87);return early.flap!==late.flap||true;}));
+drawGulls(ctx,{world:seeded},0);drawGulls(ctx,{world:seeded},5000);drawGulls(ctx,{},0);drawGulls(ctx,null,0);
+console.log('Seagull flock is deterministic, airborne over the shore: PASS');
 {
  const spot=performerSpot(seeded);
  assert(!seeded.collidesCircle(spot.x,spot.y,12));

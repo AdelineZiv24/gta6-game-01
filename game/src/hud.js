@@ -127,6 +127,13 @@ export function drawHUD(ctx, game) {
     ctx.fillStyle='#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(rampage.phase==='done'?`${rampage.score} PTS`:`${rampage.score}`,w-34,ry+32);
     ctx.font=`bold 11px ${FONT}`;ctx.fillText(rampage.phase==='done'?(rampage.payout>0?`+$${rampage.payout}`:'NO PAYOUT'):`TIME ${Math.floor(Math.max(0,Math.ceil(rampage.timeLeft))/60)}:${String(Math.floor(Math.max(0,Math.ceil(rampage.timeLeft))%60)).padStart(2,'0')} · RING +250`,w-34,ry+47);
   }
+  const fishing=game.fishing;
+  if(fishing&&fishing.phase!=='idle'){
+    const fy=(w<1000?190:104)+84+((race&&(race.phase==='running'||race.phase==='done'))?60:0)+((rampage&&(rampage.phase==='running'||rampage.phase==='done'))?60:0);
+    panel(w-230,fy,210,52);ctx.textAlign='right';ctx.fillStyle='#7be3f0';ctx.font=`bold 11px ${FONT}`;ctx.fillText('FISHING',w-34,fy+14);
+    ctx.fillStyle=fishing.phase==='bite'?'#ef826c':'#fff3dc';ctx.font=`bold 17px ${FONT}`;ctx.fillText(fishing.phase==='bite'?'BITE! · PRESS E':fishing.phase==='cast'?'CASTING…':'WAITING…',w-34,fy+32);
+    ctx.fillStyle='#fff3dc';ctx.font=`bold 11px ${FONT}`;ctx.fillText(fishing.lastCatch?`CAUGHT ${fishing.caught} · LAST ${fishing.lastCatch}`:`CAUGHT ${fishing.caught}`,w-34,fy+47,182);
+  }
   if(game.police?.arrest>0){panel(w/2-130,h*.32,260,54);ctx.textAlign='center';ctx.fillStyle='#ff9d8d';ctx.font=`bold 18px ${FONT}`;ctx.fillText('BUSTED',w/2,h*.32+18);ctx.fillStyle='#ffffff33';ctx.fillRect(w/2-114,h*.32+35,228,8);ctx.fillStyle='#ef826c';ctx.fillRect(w/2-114,h*.32+35,228*game.police.arrest,8);}
   const combat=game.combat;
   if(combat){

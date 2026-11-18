@@ -17,9 +17,11 @@ import { createPopups, updatePopups, drawPopups, spawnPopup } from './popups.js'
 import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js';
 import { createFuelState, updateFuel, drawFuelWorld } from './fuel.js';
 import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
+import { createFishing, updateFishing, drawFishingWorld } from './fishing.js';
 import { createRep } from './rep.js';
 import { createRadio, cycleRadio } from './radio.js';
 import { drawPerformer } from './performer.js';
+import { drawGulls } from './gulls.js';
 import { weatherAt, drawRain } from './weather.js';
 
 const canvas = document.getElementById('game');
@@ -41,6 +43,7 @@ export const game = {
   audio, vehicleEffects: createVehicleEffects(), popups: createPopups(), race: createRace(),
   fuel: createFuelState(),
   rampage: createRampage(),
+  fishing: createFishing(),
   rep: createRep(),
   radio: createRadio(),
 };
@@ -134,7 +137,7 @@ function startGame(foot = false, record=null) {
   if(game.missions.currentMission>=6||game.missions.completed.includes(5))game.missions.objective='Story complete · Free roam in Coral Bay';
   else if(game.missions.currentMission===5)game.missions.objective='Meet Lena at the Marlin Diner · One last job';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
+  game.wanted=createWanted();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.rep=createRep(record);game.radio=createRadio();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -269,6 +272,7 @@ function update(dt, time) {
     if(game.race)updateRace(game.race,game,dt);
     updateFuel(game,dt);
     if(game.rampage)updateRampage(game.rampage,game,dt);
+    if(game.fishing)updateFishing(game.fishing,game,dt,input);
     game.playSeconds += dt; if (shot !== 'start' && shot !== 'foot' && shot !== 'mission' && shot !== 'chase' && shot !== 'cover') game.clockMinutes += dt;
     audio.update(game, dt);
     const car=game.vehicle,look=car?car.speed*.3:0;
@@ -283,6 +287,7 @@ function frame(time) {
   missionKeysConsumed=false;
   if(game.state==='playing'&&game.player.health<=0)finishOutcome('wasted');
   if(game.outcome&&game.rampage?.phase==='running')updateRampage(game.rampage,game,0);
+  if(game.outcome&&game.fishing&&game.fishing.phase!=='idle')updateFishing(game.fishing,game,0,input);
   const elapsed = lastTime === undefined ? 0 : Math.min((time-lastTime)/1000,.1); lastTime = time;
   
   if (!game.outcome && input.anyPressed('Escape','KeyP')) {
@@ -305,6 +310,7 @@ function frame(time) {
     const raining=weatherAt(game.playSeconds)==='rain';
     for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p,raining);
     drawPerformer(ctx,game,time);
+    drawGulls(ctx,game,time);
     const lightLevel=headlightLevel(game.clockMinutes);
     for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time,lightLevel);
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view(),true);
@@ -314,6 +320,7 @@ function frame(time) {
     if(game.race)drawRaceWorld(ctx,game.race,game,time);
     drawFuelWorld(ctx,game,time);
     if(game.rampage)drawRampageWorld(ctx,game.rampage,game,time);
+    if(game.fishing)drawFishingWorld(ctx,game.fishing,game,time);
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);
     drawCombat(ctx,game);
     drawPopups(ctx,game.popups);
