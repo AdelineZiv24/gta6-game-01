@@ -16,10 +16,12 @@ import { createAudio } from './audio.js';
 import { createPopups, updatePopups, drawPopups, spawnPopup } from './popups.js';
 import { createRace, updateRace, drawRaceWorld, stageRaceShot } from './race.js';
 import { createFuelState, updateFuel, drawFuelWorld } from './fuel.js';
+import { createSprayState, updateSpray, drawSprayWorld } from './spray.js';
 import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
 import { createFishing, updateFishing, drawFishingWorld } from './fishing.js';
 import { createCourier, updateCourier, drawCourierWorld } from './courier.js';
 import { createDrift, updateDrift } from './drift.js';
+import { createBus, updateBus } from './bus.js';
 import { updateStunt, drawStuntWorld } from './stunt.js';
 import { createRep } from './rep.js';
 import { createRadio, cycleRadio } from './radio.js';
@@ -45,6 +47,7 @@ export const game = {
   width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio || 1,
   audio, vehicleEffects: createVehicleEffects(), popups: createPopups(), race: createRace(),
   fuel: createFuelState(),
+  spray: createSprayState(),
   rampage: createRampage(),
   fishing: createFishing(),
   courier: createCourier(),
@@ -66,11 +69,13 @@ export function reportCrime(type, x, y, severity = 1, violent = false) {
   return crime;
 }
 let parked = setupParkedCars(world), traffic = createTraffic(world,game.player), pedestrians = createPedestrians(world,game.player);
+const bus = createBus(world); game.bus = bus;
 const allCars = [];
 function collectCars() {
   allCars.length=0;
   for(const car of parked) allCars.push(car);
   for(const car of traffic.cars) allCars.push(car);
+  allCars.push(bus.car);
   for(const unit of game.police.units)allCars.push(unit.car);
   if(game.police.roadblock)for(const car of game.police.roadblock.cars)allCars.push(car);
   if(game.vehicle && !allCars.includes(game.vehicle)) allCars.push(game.vehicle);
@@ -103,7 +108,7 @@ function interact() {
     game.vehicle.driver='parked';game.vehicle.speed=game.vehicle.vx=game.vehicle.vy=0;game.vehicle=null;return;
   }
   let nearest=null,dist=65;
-  for(const car of allCars){const d=Math.hypot(car.x-game.player.x,car.y-game.player.y);if(car!==game.missions?.rival&&!car.police&&car.health>0&&d<dist&&Math.abs(car.speed)<120){nearest=car;dist=d;}}
+  for(const car of allCars){const d=Math.hypot(car.x-game.player.x,car.y-game.player.y);if(car!==game.missions?.rival&&!car.police&&!car.bus&&car.health>0&&d<dist&&Math.abs(car.speed)<120){nearest=car;dist=d;}}
   if(nearest)game.entering={car:nearest,remaining:nearest.driver==='traffic-driven'?.35:.7};
 }
 function finishOutcome(kind){
@@ -243,6 +248,7 @@ function update(dt, time) {
     const focus=game.vehicle||game.player;
     updatePolice(game.police,game,world,renderer.camera,dt,u=>policeFire(game,world,u,allCars,pedestrians.people,reportCrime));
     updateTraffic(traffic,world,focus,allCars,pedestrians.people,dt,(x,y)=>addFleeingPedestrian(pedestrians,x,y));
+    updateBus(bus,world,allCars,pedestrians.people,dt);
     if(game.missions?.rival&&game.vehicle!==game.missions.rival&&game.missions.activity==='mission'&&!game.missions.dialogue){
       const rival=game.missions.rival,target=game.vehicle||game.player;
       if(rival.health<=0){rival.speed=rival.vx=rival.vy=0;}
@@ -278,6 +284,7 @@ function update(dt, time) {
     if(game.recentCrimes.length>96){const floor=game.wanted.lastId-32;game.recentCrimes=game.recentCrimes.filter(c=>c.id>floor);}
     if(game.race)updateRace(game.race,game,dt);
     updateFuel(game,dt);
+    updateSpray(game,dt);
     if(game.rampage)updateRampage(game.rampage,game,dt);
     if(game.fishing)updateFishing(game.fishing,game,dt,input);
     if(game.courier)updateCourier(game.courier,game,dt);
@@ -330,6 +337,7 @@ function frame(time) {
     if(game.missions)drawMissionWorld(ctx,game.missions,game,time);
     if(game.race)drawRaceWorld(ctx,game.race,game,time);
     drawFuelWorld(ctx,game,time);
+    drawSprayWorld(ctx,game,time);
     if(game.rampage)drawRampageWorld(ctx,game.rampage,game,time);
     if(game.fishing)drawFishingWorld(ctx,game.fishing,game,time);
     if(game.courier)drawCourierWorld(ctx,game.courier,game,time);

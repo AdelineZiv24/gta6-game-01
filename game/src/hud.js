@@ -2,6 +2,7 @@ import { WORLD, FONT } from './config.js';
 import { repProgress } from './rep.js';
 import { stationNow } from './radio.js';
 import { gasStations } from './fuel.js';
+import { sprayGarages } from './spray.js';
 import { weatherLabel } from './weather.js';
 
 export function responseRows(game) {
@@ -17,6 +18,15 @@ export function responseRows(game) {
   if(game.police.heli)rows.push({callsign:'AIR-1',type:'HELI',distance:distanceTo(game.police.heli),state:seen?'SPOTLIGHT':'SEARCHING'});
   if(game.police.roadblock)rows.push({callsign:'BLOCK',type:'ROADBLOCK',distance:distanceTo(game.police.roadblock),state:'AHEAD'});
   return rows.sort((first,second)=>first.distance-second.distance);
+}
+
+export function displayRows(game) {
+  const rows = responseRows(game);
+  const units = rows.filter(row => row.callsign !== 'AIR-1' && row.callsign !== 'BLOCK');
+  const pinned = rows.filter(row => row.callsign === 'AIR-1' || row.callsign === 'BLOCK');
+  if (!pinned.length) return { shown: rows.slice(0, 4), more: Math.max(0, rows.length - 4) };
+  const shownUnits = units.slice(0, 3);
+  return { shown: [...shownUnits, ...pinned], more: units.length - shownUnits.length };
 }
 
 function drawPortrait(ctx, speaker, x, y) {
@@ -51,15 +61,15 @@ export function drawHUD(ctx, game) {
   const inset=20;panel(inset,20,208,96); ctx.fillStyle='#fff3dc'; ctx.fillText(player.name.toUpperCase(),inset+14,40);
   const bar = (y,value,max,color,label) => { ctx.fillStyle='#ffffff28';ctx.fillRect(34,y,150,7);ctx.fillStyle=color;ctx.fillRect(34,y,150*Math.max(0,Math.min(1,value/max)),7);ctx.fillStyle='#fff3dc';ctx.font=`10px ${FONT}`;ctx.fillText(label,193,y+4); };
   bar(59,player.health,player.maxHealth,'#ef826c','HP'); bar(80,player.armour,player.maxArmour,'#71d3d9','AR');
-  if(game.police?.units?.length||game.police?.heli){
-    const rows=responseRows(game);
-    const rowCount=Math.min(4,rows.length)+(rows.length>4?1:0);
+  if(game.police?.units?.length||game.police?.heli||game.police?.roadblock){
+    const {shown,more}=displayRows(game);
+    const rowCount=shown.length+(more>0?1:0);
     panel(inset,124,208,36+rowCount*19);ctx.textAlign='left';ctx.fillStyle='#f9d777';ctx.font=`bold 11px ${FONT}`;ctx.fillText('CBPD RESPONSE',inset+14,144);
     ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;
-    rows.slice(0,4).forEach(({callsign,type,distance,state},index)=>{
+    shown.forEach(({callsign,type,distance,state},index)=>{
       ctx.fillText(`${callsign} · ${type}  ${distance} m  ${state}`,inset+14,165+index*19,180);
     });
-    if(rows.length>4)ctx.fillText(`+${rows.length-4} MORE`,inset+14,241);
+    if(more>0)ctx.fillText(`+${more} MORE`,inset+14,165+shown.length*19);
   }
   panel(Math.max(inset,w-230),20,Math.min(210,w-2*inset),73);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 22px ${FONT}`;ctx.fillText(`$${player.cash.toLocaleString('en-US')}`,w-inset-14,45);
   const rep=repProgress(game.rep?.xp??0);ctx.textAlign='left';ctx.fillStyle='#71d3d9';ctx.font=`bold 11px ${FONT}`;ctx.fillText(`REP LV ${rep.level}`,w-216,45);ctx.fillStyle='#ffffff28';ctx.fillRect(w-216,86,182,4);ctx.fillStyle='#71d3d9';ctx.fillRect(w-216,86,Math.round(182*rep.fraction),4);ctx.textAlign='right';
@@ -106,6 +116,10 @@ export function drawHUD(ctx, game) {
   if(game.world)for(const station of gasStations(game.world)){
     const dx=(station.x-player.x)*scale,dy=(station.y-player.y)*scale;
     ctx.fillStyle='#f9a03f';ctx.strokeStyle='#173d46';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),3.5,0,Math.PI*2);ctx.fill();ctx.stroke();
+  }
+  if(game.world)for(const garage of sprayGarages(game.world)){
+    const dx=(garage.x-player.x)*scale,dy=(garage.y-player.y)*scale;
+    ctx.fillStyle='#2fd4c4';ctx.strokeStyle='#173d46';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),3.5,0,Math.PI*2);ctx.fill();ctx.stroke();
   }
   ctx.translate(cx,cy);ctx.rotate(player.facing);if(game.vehicle){ctx.fillStyle=game.vehicle.color;ctx.fillRect(-10,-5,20,10);ctx.fillStyle='#173c49';ctx.fillRect(-3,-4,7,8);}else {ctx.fillStyle='#fff9e6';ctx.strokeStyle='#17424b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(-7,7);ctx.lineTo(-3,0);ctx.lineTo(-7,-7);ctx.closePath();ctx.fill();ctx.stroke();}ctx.restore();
   ctx.strokeStyle='#fff1d9';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();ctx.textAlign='center';ctx.fillStyle='#163e47';ctx.font=`bold 11px ${FONT}`;ctx.fillText('N',cx,cy-radius+13);

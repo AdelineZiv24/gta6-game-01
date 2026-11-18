@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { responseRows } from '../src/hud.js';
+import { displayRows } from '../src/hud.js';
+import { createBus, updateBus } from '../src/bus.js';
 import { radioNow, RADIO_TRACKS, RADIO_STATIONS, BAY_TRACKS, stationNow, createRadio, cycleRadio } from '../src/radio.js';
 const listeners=new Map(),elements=new Map(),storage=new Map();let raf,confirmResult=false,confirms=0,writes=0;
 const ctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:(...args)=>{for(const value of args)if(typeof value==='number')assert(Number.isFinite(value),`${String(k)} received a non-finite coordinate`);},set:(o,k,v)=>(o[k]=v,true)});
@@ -92,7 +94,7 @@ console.log('Headlight level follows the render daylight curve: PASS');
 }
 console.log('Headlight cones gated by dusk level, twin gradients: PASS');
 {
- assert.equal(MODELS.length,8);assert.equal(MODELS[6].name,'Dockhand Flatbed');assert.equal(MODELS[7].name,'Marlin Roadster');
+ assert.equal(MODELS.length,9);assert.equal(MODELS[6].name,'Dockhand Flatbed');assert.equal(MODELS[7].name,'Marlin Roadster');assert.equal(MODELS[8].name,'Coral Transit Bus');
  for(const m of MODELS){assert(m.topSpeed<=375&&m.topSpeed>=245);assert(m.acceleration<=215&&m.acceleration>=120);}
  const flatbed=createCar(300,lane,0,6,undefined,'player-driven');assert.equal(flatbed.model.name,'Dockhand Flatbed');assert.equal(flatbed.radius,MODELS[6].width/2+2);
  const roadster=createCar(320,lane,0,7,undefined,'traffic-driven');assert.equal(roadster.model.name,'Marlin Roadster');
@@ -517,3 +519,78 @@ console.log('Seagull flock is deterministic, airborne over the shore: PASS');
  drawPerformer(ctx,{world:seeded},0);drawPerformer(ctx,{world:seeded},5000);drawPerformer(ctx,{},0);
 }
 console.log('Street performer spot and ambient draw: PASS');
+
+{
+ const units = Array.from({length:6}, (_, index) => ({
+  id:index+1, health:100, car:{x:(index+1)*100,y:0,health:100,interceptor:false},
+ })).reverse();
+ const stub = {player:{x:0,y:0},wanted:{seen:true},police:{
+  units:units.slice(1),heli:{x:600,y:0},roadblock:{x:700,y:0},
+ }};
+ const {shown,more} = displayRows(stub);
+ assert.deepEqual(shown.map(row=>row.callsign),['CB-01','CB-02','CB-03','AIR-1','BLOCK']);
+ assert.equal(more,2);
+ console.log('T1 CBPD pins distant helicopter and roadblock after nearest units: PASS');
+
+ stub.police = {units};
+ assert.deepEqual(displayRows(stub),{shown:responseRows(stub).slice(0,4),more:2});
+ console.log('T2 CBPD leaves the unit-only row selection unchanged: PASS');
+}
+
+{
+ assert.deepEqual(MODELS[8],{name:'Coral Transit Bus',length:64,width:26,topSpeed:245,acceleration:120});
+ const bus=createBus(seeded);
+ assert.equal(bus.car.model,MODELS[8]);
+ assert.equal(bus.car.bus,true);
+ assert.equal(bus.car.driver,'traffic-driven');
+ assert.equal(game.bus.car.bus,true);
+ console.log('T4 Coral Transit Bus roster and real-game actor: PASS');
+}
+
+{
+ const bus=createBus(seeded),car=bus.car,cars=[car];
+ const stops=new Set();
+ let stoppedAt=null,resumed=false;
+ for(let step=0;step<6000;step++){
+  updateBus(bus,seeded,cars,[],1/30);
+  assert(seeded.roads.vertical.some(road=>Math.abs(car.x-road.x)<=46)||
+   seeded.roads.horizontal.some(road=>Math.abs(car.y-road.y)<=46),'bus stays on the road');
+  if(bus.state==='stop'){
+   const shelter=bus.shelters.find(stop=>Math.hypot(car.x-stop.x,car.y-stop.y)<130);
+   assert(shelter,'bus stops near a shelter');
+   stops.add(shelter);
+   stoppedAt={x:car.x,y:car.y};
+  }else if(stoppedAt&&Math.hypot(car.x-stoppedAt.x,car.y-stoppedAt.y)>0){
+   resumed=true;
+  }
+ }
+ assert.equal(stops.size,2);
+ assert(resumed,'bus resumes driving and moving after a shelter stop');
+ console.log('T5 Bus stays on road lanes, stops at both shelters, and resumes: PASS');
+}
+
+{
+ const {car}=createBus(seeded);
+ const other=createCar(car.x-20,car.y,0,0,undefined,'player-driven');
+ const originalX=other.x,busX=car.x;
+ other.speed=other.vx=120;
+ resolveCarContacts([car,other],()=>{},0);
+ assert(other.x<originalX);
+ assert.equal(car.x,busX);
+ assert(other.health<100&&car.health<100);
+
+ location.search='';
+ const {game:live}=await import('../src/main.js?bus-entry-test');
+ frame();element('new-game').onclick();frame();
+ assert.equal(live.state,'playing');
+ const point={x:2164,y:618};
+ Object.assign(live.bus.car,point,{speed:0});
+ Object.assign(live.player,point,{previousX:point.x,previousY:point.y});
+ key('KeyE');
+ for(let step=0;step<=30;step++){
+  assert.notEqual(live.vehicle,live.bus.car);
+  assert.notEqual(live.entering?.car,live.bus.car);
+  if(step<30)frame();
+ }
+ console.log('T6 Bus contacts damage both cars and KeyE cannot enter the bus: PASS');
+}

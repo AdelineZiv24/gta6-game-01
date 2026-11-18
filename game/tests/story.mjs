@@ -13,11 +13,14 @@ import {createRampage,rampageStartPoint,rampageBeachPoint} from '../src/rampage.
 import {createCourier,courierStartPoint} from '../src/courier.js';
 import {createDrift} from '../src/drift.js';
 import {createRep} from '../src/rep.js';
+import {responseRows} from '../src/hud.js';
+import {setWanted,updateEscape} from '../src/wanted.js';
+import {createSprayState,sprayGarages,updateSpray} from '../src/spray.js';
 const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
 const input={wasPressed:k=>key===k,isDown:()=>false};
-function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),courier:createCourier(),drift:createDrift(),escape:createEscape(),rep:createRep()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
+function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),courier:createCourier(),drift:createDrift(),escape:createEscape(),rep:createRep(),spray:createSprayState()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
 function tick(g,k=null,dt=.1){key=k;updateMissions(g.missions,g,dt,input,g.cars,{});key=null;}
 function at(g,p,car=false){if(car){g.vehicle??=createCar(p.x,p.y,0,0,'#777','player-driven');Object.assign(g.vehicle,{x:p.x,y:p.y});}else g.vehicle=null;Object.assign(g.player,{x:p.x,y:p.y});}
 function talk(g){let n=10;while(g.missions.dialogue&&n--)tick(g,'KeyE');assert(n>0);}
@@ -159,9 +162,96 @@ console.log('REP gains from deposits, collectibles and taxi fares: PASS');
 }
 console.log('Save round trip with REP, finale indices, legacy default: PASS');
 {
- assert.equal(MODELS.length,8);
+ assert.equal(MODELS.length,9);
  const truck=createCar(200,200,0,6,'#777','player-driven');assert.equal(truck.model.name,'Dockhand Flatbed');
  const roadster=createCar(200,260,0,7,'#777','player-driven');assert.equal(roadster.model.name,'Marlin Roadster');
  assert(MODELS.every(m=>m.topSpeed<=375));assert.equal(Math.max(...MODELS.map(m=>m.topSpeed)),375);
 }
 console.log('Vehicle roster grows to eight models, no new fastest car: PASS');
+
+{
+ const g=fixture(),texts=[],panels=[];
+ const canvas=new Proxy({
+  fillText:(...args)=>texts.push(args),roundRect:(...args)=>panels.push(args),
+  measureText:text=>({width:text.length*7}),
+ },{get:(target,key)=>key in target?target[key]:()=>{}});
+ Object.assign(g,{width:1280,height:800,pixelRatio:1,minimap:{},objective:{text:'Objective'}});
+ g.police.units=Array.from({length:6},(_,index)=>({
+  id:index+1,health:100,car:{x:g.player.x+(index+1)*100,y:g.player.y,health:100},
+ }));
+ drawHUD(canvas,g);
+ const rows=responseRows(g);
+ const expected=rows.slice(0,4).map(({callsign,type,distance,state},index)=>
+  [`${callsign} · ${type}  ${distance} m  ${state}`,34,165+index*19,180]);
+ expected.push([`+${rows.length-4} MORE`,34,241]);
+ assert.deepEqual(texts.filter(([text])=>text.startsWith('CB-')||text.endsWith(' MORE')),expected);
+ console.log('T2 Unit-only CBPD HUD keeps the original text and row positions: PASS');
+
+ texts.length=panels.length=0;
+ g.police.units.length=4;
+ g.police.heli={x:g.player.x+600,y:g.player.y};
+ g.police.roadblock={x:g.player.x+700,y:g.player.y};
+ drawHUD(canvas,g);
+ assert(texts.some(([text])=>text.startsWith('BLOCK · ROADBLOCK')));
+ assert(texts.some(([text])=>text.startsWith('AIR-1 · HELI')));
+ assert(texts.some(([text])=>text==='+1 MORE'));
+ assert.equal(panels.find(([,y])=>y===124)?.[3],150);
+ console.log('T3 CBPD HUD expands to show both pinned rows and overflow: PASS');
+}
+
+function sprayFixture(cash){
+ const g=fixture();
+ at(g,sprayGarages(world)[0],true);
+ g.player.cash=cash;
+ g.vehicle.health=40;
+ setWanted(g.wanted,4);
+ return g;
+}
+
+{
+ const garages=sprayGarages(world);
+ assert.equal(garages.length,1);
+ assert.equal(garages[0].building.storefront.sign,'CORAL SPRAY');
+ const g=sprayFixture(500);
+ updateSpray(g,.1);
+ assert.equal(g.player.cash,350);
+ assert.equal(g.vehicle.health,100);
+ assert.equal(g.wanted.stars,0);
+ assert(g.popups.list.some(entry=>entry.life>0&&entry.text==='RESPRAYED'));
+ assert.equal(g.notice,'WANTED CLEARED · $150');
+ console.log('T7 CORAL SPRAY repairs and clears wanted for $150: PASS');
+}
+
+{
+ const g=sprayFixture(500);
+ updateEscape(g.escape,g);
+ assert.equal(g.escape.peak,4);
+ updateSpray(g,.1);
+ assert.deepEqual(g.escape,{peak:0,prev:0});
+ updateEscape(g.escape,g);
+ assert.equal(g.player.cash,350);
+ assert.equal(g.rep.xp,0);
+ console.log('T8 Paid wanted clear does not award escape cash or REP: PASS');
+}
+
+{
+ const g=sprayFixture(100);
+ updateSpray(g,.1);
+ assert.equal(g.player.cash,100);
+ assert.equal(g.vehicle.health,40);
+ assert.equal(g.wanted.stars,4);
+ assert.equal(g.notice,'NEED $150');
+ console.log('T9 CORAL SPRAY declines service without enough cash: PASS');
+}
+
+{
+ const g=sprayFixture(500);
+ at(g,sprayGarages(world)[0]);
+ updateSpray(g,.1);
+ assert.equal(g.vehicle,null);
+ assert.equal(g.player.cash,500);
+ assert.equal(g.wanted.stars,4);
+ assert.equal(g.notice,undefined);
+ assert.equal(g.popups.cursor,0);
+ console.log('T10 CORAL SPRAY does not activate on foot: PASS');
+}

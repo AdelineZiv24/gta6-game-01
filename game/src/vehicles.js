@@ -9,6 +9,7 @@ export const MODELS = [
   {name:'Sunline Taxi',length:48,width:25,topSpeed:315,acceleration:170},
   {name:'Dockhand Flatbed',length:58,width:28,topSpeed:262,acceleration:132},
   {name:'Marlin Roadster',length:42,width:24,topSpeed:338,acceleration:198},
+  {name:'Coral Transit Bus',length:64,width:26,topSpeed:245,acceleration:120},
 ];
 export function modelByName(name) { return MODELS.find(model=>model.name===name) || MODELS[0]; }
 export const CAR_COLORS=['#dc735b','#5ba8a8','#eee1b9','#577997','#936f99','#87a96b','#e3b854','#b9c8c0','#c38c74','#83b9c3','#baa3bd','#b8b574'];
@@ -19,7 +20,7 @@ export function createCar(x,y,heading=0,model=0,color=colors[model%colors.length
 }
 export function setupParkedCars(world) {
   const random=createRandom('bay-parking'); const cars=[];
-  for(const p of world.parkingSpots) if(random()<.62) cars.push(createCar(p.x,p.y,p.heading,Math.floor(random()*MODELS.length),colors[Math.floor(random()*colors.length)]));
+  for(const p of world.parkingSpots) if(random()<.62) cars.push(createCar(p.x,p.y,p.heading,Math.floor(random()*(MODELS.length-1)),colors[Math.floor(random()*colors.length)]));
   return cars;
 }
 function blocked(world,x,y,r) {return world.collidesCircle(x,y,r)||y+r>=world.water.y;}
@@ -185,6 +186,7 @@ export function drawCar(ctx,car,time=0,light=0) {
   if(car.model===MODELS[5]){ctx.fillStyle='#fff2c6';ctx.fillRect(-4,-5,9,10);}
   if(car.model===MODELS[6]){ctx.fillStyle='#54686a';ctx.fillRect(-l*.47,-w*.37,l*.36,w*.74);ctx.fillStyle='#2e3f42';ctx.fillRect(-l*.47,-w*.37,l*.36,3);ctx.fillRect(-l*.47,w*.37-3,l*.36,3);ctx.fillRect(-l*.47,-w*.37,3,w*.74);ctx.fillStyle='#8a6f4d';ctx.fillRect(-l*.42,-w*.24,l*.14,w*.48);ctx.fillStyle='#22333d';ctx.beginPath();ctx.arc(-l*.16,0,4.5,0,Math.PI*2);ctx.fill();}
   if(car.model===MODELS[7]){ctx.fillStyle='rgba(179,216,224,.9)';ctx.fillRect(l*.02,-w*.34,3,w*.68);ctx.fillStyle='#7a4a35';ctx.fillRect(-l*.17,-w*.32,l*.16,w*.26);ctx.fillRect(-l*.17,w*.06,l*.16,w*.26);ctx.fillStyle='#31456b';ctx.fillRect(-l*.13,-w*.26,l*.10,w*.15);ctx.fillStyle='#efc39d';ctx.beginPath();ctx.arc(-l*.07,-w*.185,4.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#2b2b2b';ctx.fillRect(-l*.21,-w*.36,3,w*.72);}
+  if(car.model===MODELS[8]){ctx.fillStyle='#cfd8d2';ctx.fillRect(-l*.47,-w*.40,l*.94,w*.80);ctx.fillStyle='#2b6f78';ctx.fillRect(-l*.47,-w/2,l*.94,4);ctx.fillRect(-l*.47,w/2-4,l*.94,4);ctx.fillStyle='#9fc6cc';ctx.fillRect(-l*.44,-w*.34,l*.60,w*.16);ctx.fillRect(-l*.44,w*.18,l*.60,w*.16);ctx.fillStyle='#f4e9cd';ctx.fillRect(l*.22,-w*.36,l*.24,w*.72);ctx.fillStyle='#173d46';ctx.font='bold 7px sans-serif';ctx.textAlign='center';ctx.fillText('CORAL BAY LOOP',0,3);if(car.brake){ctx.fillStyle='#ff6a5e';ctx.fillRect(-l/2,-w/2+2,4,7);ctx.fillRect(-l/2,w/2-9,4,7);}}
   if(car.police){ctx.fillStyle=car.interceptor?'#dfc572':'#2864a2';ctx.fillRect(-l*.42,-w/2,l*.8,4);ctx.fillRect(-l*.42,w/2-4,l*.8,4);ctx.fillStyle=car.interceptor?'#283c49':'#f1f3ed';ctx.fillRect(-6,-w*.32,12,w*.64);ctx.fillStyle=Math.floor(time/150)%2?'#ff4b58':'#822a48';ctx.fillRect(-3,-10,6,9);ctx.fillStyle=Math.floor(time/150)%2?'#254b98':'#54baff';ctx.fillRect(-3,1,6,9);if(car.interceptor){ctx.fillStyle='#eee1b9';ctx.fillRect(l*.27,-w*.3,l*.13,w*.6);ctx.fillStyle='#172e3e';ctx.fillRect(-l*.43,-w*.43,3,w*.86);}}
   ctx.fillStyle='#fff0b4';ctx.fillRect(l/2-3,-w/2+3,3,6);ctx.fillRect(l/2-3,w/2-9,3,6);
   if(light>0.05&&(car.driver==='player-driven'||car.driver==='traffic-driven'||car.police)){
