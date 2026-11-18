@@ -46,3 +46,23 @@ export function updateBus(bus,world,allCars,pedestrians,dt){
   car.vx=distance?((target.x-car.x)/distance*car.speed):0;car.vy=distance?((target.y-car.y)/distance*car.speed):0;
   car.x+=distance?(target.x-car.x)/distance*step:0;car.y+=distance?(target.y-car.y)/distance*step:0;
 }
+
+export function stageBusAtShelter(bus, world, point) {
+  if (!bus || !bus.shelters.length) return null;
+  const shelter = bus.shelters.reduce((best, s) => Math.hypot(s.x - point.x, s.y - point.y) < Math.hypot(best.x - point.x, best.y - point.y) ? s : best);
+  let best = null;
+  for (let leg = 0; leg < LEGS.length; leg++) {
+    const a = legTarget(world, leg), b = legTarget(world, (leg + 1) % LEGS.length);
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((shelter.x - a.x) * abx + (shelter.y - a.y) * aby) / (abx * abx + aby * aby || 1)));
+    const x = a.x + abx * t, y = a.y + aby * t;
+    const d = Math.hypot(shelter.x - x, shelter.y - y);
+    if (!best || d < best.d) best = { leg, x, y, heading: Math.atan2(aby, abx), d };
+  }
+  const car = bus.car;
+  car.x = best.x; car.y = best.y; car.heading = best.heading; car.speed = 0; car.vx = 0; car.vy = 0; car.brake = true;
+  bus.leg = best.leg; bus.state = 'stop'; bus.stopTimer = 999;
+  const index = bus.shelters.indexOf(shelter);
+  if (index >= 0) bus.readyAt[index] = bus.time + 999;
+  return shelter;
+}

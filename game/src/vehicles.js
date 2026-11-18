@@ -1,5 +1,6 @@
 import { createRandom, clamp } from './random.js';
 import { spawnPopup } from './popups.js';
+import { SPIKE_CAP } from './spikes.js';
 export const MODELS = [
   {name:'Mica Hatch',length:40,width:23,topSpeed:285,acceleration:175},
   {name:'Cypress Sedan',length:48,width:25,topSpeed:320,acceleration:165},
@@ -16,7 +17,7 @@ export const CAR_COLORS=['#dc735b','#5ba8a8','#eee1b9','#577997','#936f99','#87a
 const colors=CAR_COLORS;
 export function createCar(x,y,heading=0,model=0,color=colors[model%colors.length],driver='parked') {
   const m=typeof model==='number'?MODELS[model]:model;
-  return {x,y,heading,model:m,color:m===MODELS[5]?'#efc650':color,speed:0,steering:0,health:100,driver,vx:0,vy:0,radius:m.width/2+2,shake:0,impact:0,cooldown:0,disabled:0,fuel:100};
+  return {x,y,heading,model:m,color:m===MODELS[5]?'#efc650':color,speed:0,steering:0,health:100,driver,vx:0,vy:0,radius:m.width/2+2,shake:0,impact:0,cooldown:0,disabled:0,fuel:100,spikedT:0,spikedPhase:0};
 }
 export function setupParkedCars(world) {
   const random=createRandom('bay-parking'); const cars=[];
@@ -30,6 +31,7 @@ export function carBlocked(world,car,x,y,heading=car.heading) {
 }
 export function updateCar(car,input,world,dt,effects=null) {
   car.shake=Math.max(0,car.shake-dt*14); car.impact=0;car.cooldown=Math.max(0,car.cooldown-dt);
+  car.spikedT=Math.max(0,(car.spikedT||0)-dt);
   if(car.driver!=='player-driven') return;
   if(car.health<=0){car.speed=car.vx=car.vy=0;return;}
   if(car.airT>0){
@@ -43,12 +45,13 @@ export function updateCar(car,input,world,dt,effects=null) {
   car.speed+=(throttle*(car.speed< -5?300:car.model.acceleration)-brake*(car.speed>5?310:car.model.acceleration*.65))*dt;
   car.speed*=Math.exp(-(hand?2.6:.19)*dt);
   car.speed=Math.sign(car.speed)*Math.max(0,Math.abs(car.speed)-(hand?65:8)*dt);
-  const topSpeed=car.model.topSpeed*(car.health<20?.6:1),fuelCap=(car.fuel??100)<=0?Math.min(40,topSpeed):topSpeed;
+  const modelTop=car.model.topSpeed*(car.health<20?.6:1),topSpeed=car.spikedT>0?Math.min(modelTop,SPIKE_CAP):modelTop,fuelCap=(car.fuel??100)<=0?Math.min(40,topSpeed):topSpeed;
   car.speed=clamp(car.speed,-95,fuelCap);
   const steer=Number(input.isDown('KeyD')||input.isDown('ArrowRight'))-Number(input.isDown('KeyA')||input.isDown('ArrowLeft'));
   car.steering+=(steer*.55-car.steering)*Math.min(1,dt*9);
   const oldHeading=car.heading;
   car.heading+=car.steering*(car.speed/65)/(1+Math.abs(car.speed)/145)*dt*(hand?1.7:1);
+  if(car.spikedT>0){car.spikedPhase=(car.spikedPhase||0)+dt*9;car.heading+=Math.sin(car.spikedPhase)*.3*dt*Math.min(1,Math.abs(car.speed)/60);}
   if(carBlocked(world,car,car.x,car.y)) car.heading=oldHeading;
   const grip=1-Math.exp(-(hand?1.8:9)*dt);
   car.vx+=(Math.cos(car.heading)*car.speed-car.vx)*grip; car.vy+=(Math.sin(car.heading)*car.speed-car.vy)*grip;

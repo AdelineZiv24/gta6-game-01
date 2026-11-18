@@ -5,7 +5,8 @@ import {createPlayer} from '../src/player.js';
 import {createCar,carBlocked,resolveCarContacts,MODELS} from '../src/vehicles.js';
 import {createCombat,grantPistol} from '../src/combat.js';
 import {createWanted,createEscape} from '../src/wanted.js';
-import {writeSave,loadSave} from '../src/save.js';
+import {writeSave,loadSave,SAVE_VERSION} from '../src/save.js';
+import {createPhotos,updatePhotos,drawPhotosWorld,photoSpots,PHOTO_REWARD} from '../src/photos.js';
 import {drawHUD} from '../src/hud.js';
 import {createPopups} from '../src/popups.js';
 import {createRace,raceStartPoint} from '../src/race.js';
@@ -20,7 +21,7 @@ const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
 const input={wasPressed:k=>key===k,isDown:()=>false};
-function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),courier:createCourier(),drift:createDrift(),escape:createEscape(),rep:createRep(),spray:createSprayState()};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
+function fixture(record){const g={world,player:createPlayer(world.spawnPoints.diner),combat:createCombat(),wanted:createWanted(),playSeconds:0,clockMinutes:555,police:{arrest:0},vehicle:null,cars:[],popups:createPopups(),race:createRace(),rampage:createRampage(),courier:createCourier(),drift:createDrift(),escape:createEscape(),rep:createRep(),spray:createSprayState(),photos:createPhotos(record)};g.grantPistol=n=>grantPistol(g,n);g.clearWanted=()=>{g.police.arrest=0;g.wanted=createWanted();};g.missions=createMissionState(record);return g;}
 function tick(g,k=null,dt=.1){key=k;updateMissions(g.missions,g,dt,input,g.cars,{});key=null;}
 function at(g,p,car=false){if(car){g.vehicle??=createCar(p.x,p.y,0,0,'#777','player-driven');Object.assign(g.vehicle,{x:p.x,y:p.y});}else g.vehicle=null;Object.assign(g.player,{x:p.x,y:p.y});}
 function talk(g){let n=10;while(g.missions.dialogue&&n--)tick(g,'KeyE');assert(n>0);}
@@ -254,4 +255,38 @@ function sprayFixture(cash){
  assert.equal(g.notice,undefined);
  assert.equal(g.popups.cursor,0);
  console.log('T10 CORAL SPRAY does not activate on foot: PASS');
+}
+{
+ const g=fixture();const spots=photoSpots(world);assert.equal(spots.length,5);
+ for(const spot of spots){assert(!world.collidesCircle(spot.x,spot.y,14));assert(spot.y+30<world.water.y);}
+ at(g,spots[2]);const cashBefore=g.player.cash,earnedBefore=g.missions.totalEarned;
+ key='KeyE';const snapped=updatePhotos(g.photos,g,.1,input);key=null;
+ assert.equal(snapped,2);assert.equal(g.player.cash,cashBefore+PHOTO_REWARD);assert.equal(g.missions.totalEarned,earnedBefore+PHOTO_REWARD);
+ assert.equal(g.rep.xp,10);assert.deepEqual(g.photos.taken,[2]);assert.equal(g.photos.dirty,true);
+ assert(g.popups.list.some(entry=>entry.life>0&&entry.text==='POSTCARD · Fountain Court'));
+ writeSave(g,g.missions);const saved=loadSave();assert.deepEqual(saved.photos,[2]);
+ const restored=fixture(saved);assert.deepEqual(restored.photos.taken,[2]);
+ console.log('B21-T7 Photo snap pays $25 + REP 10 and persists in the save: PASS');
+ key='KeyE';const again=updatePhotos(g.photos,g,.1,input);key=null;
+ assert.equal(again,-1);assert.equal(g.player.cash,cashBefore+PHOTO_REWARD);assert.deepEqual(g.photos.taken,[2]);
+ console.log('B21-T8 Second snap at a taken spot pays nothing: PASS');
+}
+{
+ assert.equal(SAVE_VERSION,1);
+ data.set('coral-bay-heat-save',JSON.stringify({version:1,cash:50,completed:[0,1],currentMission:2}));
+ const legacy=loadSave();assert.deepEqual(legacy.photos,[]);assert.equal(legacy.cash,50);
+ assert.deepEqual(createPhotos(legacy).taken,[]);
+ console.log('B21-T9 Legacy save without photo flags loads all five untaken: PASS');
+}
+{
+ const g=fixture();const spots=photoSpots(world);
+ at(g,spots[0],true);key='KeyE';assert.equal(updatePhotos(g.photos,g,.1,input),-1);key=null;
+ at(g,{x:spots[0].x+200,y:spots[0].y});key='KeyE';assert.equal(updatePhotos(g.photos,g,.1,input),-1);key=null;
+ assert.deepEqual(g.photos.taken,[]);
+ const texts=[],st={textAlign:'center'};const canvas=new Proxy({measureText:t=>({width:t.length*7}),save(){},restore(){},roundRect(){},fillText(t){texts.push(t);}},{get:(o,k)=>k in o?o[k]:st[k]??(()=>{}),set:(o,k,v)=>(st[k]=v,true)});
+ at(g,spots[0]);drawPhotosWorld(canvas,g.photos,g,0);
+ assert(texts.some(t=>t==='E · SNAP PHOTO'));
+ g.photos.taken.push(0);texts.length=0;drawPhotosWorld(canvas,g.photos,g,0);
+ assert(texts.some(t=>t==='PHOTO TAKEN'));
+ console.log('B21-T10 Photo prompt only on foot inside a ring; taken spots read PHOTO TAKEN: PASS');
 }

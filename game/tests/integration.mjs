@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { spikeStrip, updateSpikes, SPIKE_TIME } from '../src/spikes.js';
 import { responseRows } from '../src/hud.js';
 import { displayRows } from '../src/hud.js';
-import { createBus, updateBus } from '../src/bus.js';
+import { createBus, updateBus, stageBusAtShelter, busShelters } from '../src/bus.js';
 import { radioNow, RADIO_TRACKS, RADIO_STATIONS, BAY_TRACKS, stationNow, createRadio, cycleRadio } from '../src/radio.js';
 const listeners=new Map(),elements=new Map(),storage=new Map();let raf,confirmResult=false,confirms=0,writes=0;
 const ctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:(...args)=>{for(const value of args)if(typeof value==='number')assert(Number.isFinite(value),`${String(k)} received a non-finite coordinate`);},set:(o,k,v)=>(o[k]=v,true)});
@@ -593,4 +594,72 @@ console.log('Street performer spot and ambient draw: PASS');
   if(step<30)frame();
  }
  console.log('T6 Bus contacts damage both cars and KeyE cannot enter the bus: PASS');
+}
+
+{
+ const fresh=createBus(seeded);
+ assert.equal(fresh.state,'drive');assert.equal(fresh.leg,0);
+ assert.equal(fresh.car.x,3590);assert.equal(fresh.car.y,2306);
+ const bus2=createBus(seeded);const shelter=stageBusAtShelter(bus2,seeded,{x:2056,y:1529});
+ assert.equal(shelter,busShelters(seeded)[0]);
+ assert.equal(bus2.state,'stop');assert.equal(bus2.car.brake,true);
+ assert(Math.abs(bus2.car.x-1691.8)<2&&Math.abs(bus2.car.y-1674.2)<2);
+ assert(Math.abs(bus2.car.heading-Math.atan2(-1246,20))<.01);
+ assert(Math.hypot(bus2.car.x-shelter.x,bus2.car.y-shelter.y)<110);
+ console.log('B21-T1a Staging helper parks the bus at the shelter lane point, gameplay spawn unchanged: PASS');
+}
+{
+ location.search='?shot=foot&seed=1';
+ const {game:footGame}=await import('../src/main.js?scene-foot-b21');
+ let footTime=0;for(let index=0;index<30;index++){raf(footTime);footTime+=1000/60;}
+ assert.equal(footGame.bus.state,'stop');assert.equal(footGame.bus.car.brake,true);
+ assert(Math.abs(footGame.bus.car.x-footGame.player.x)<550&&Math.abs(footGame.bus.car.y-footGame.player.y)<344);
+ assert(Math.hypot(footGame.bus.car.x-1612,footGame.bus.car.y-1673)<110);
+ location.search='';
+ console.log('B21-T1 Foot scene stages the bus stopped at the shelter, in frame: PASS');
+}
+{
+ const pg=roadblockFixture(4);updatePolice(pg.police,pg,seeded,rbCamera,1/60,()=>{});
+ const rb=pg.police.roadblock;assert(rb);
+ const strip=spikeStrip(rb);assert(strip);assert.equal(strip.x,rb.x);assert.equal(strip.y,rb.y);assert.equal(strip.half,34);
+ setWanted(pg.wanted,2,pg.vehicle);updatePolice(pg.police,pg,seeded,rbCamera,1/60,()=>{});
+ assert.equal(pg.police.roadblock,null);assert.equal(spikeStrip(pg.police.roadblock),null);
+ console.log('B21-T2 Spike strip exists exactly while its roadblock is active: PASS');
+}
+{
+ const police=createPolice();const rb=placeRoadblock(police,seeded,2164,1482,0,0);assert(rb);
+ const car=createCar(2164,1482,0,3,undefined,'player-driven');car.vx=165;car.vy=0;
+ const g={vehicle:car,popups:createPopups()};
+ updateSpikes(police,g,1/60);
+ assert.equal(car.spikedT,SPIKE_TIME);
+ assert(g.popups.list.some(entry=>entry.life>0&&entry.text==='TYRES SPIKED'));
+ const cursor=g.popups.cursor;updateSpikes(police,g,1/60);assert.equal(g.popups.cursor,cursor);
+ console.log('B21-T3 Player crossing the strip above 60 is spiked once, popup fires once: PASS');
+}
+{
+ const police=createPolice();placeRoadblock(police,seeded,2164,1482,0,0);
+ const slow=createCar(2164,1482,0,3,undefined,'player-driven');slow.vx=50;
+ updateSpikes(police,{vehicle:slow,popups:createPopups()},1/60);assert.equal(slow.spikedT,0);
+ const beside=createCar(2164,1582,0,3,undefined,'player-driven');beside.vx=165;
+ updateSpikes(police,{vehicle:beside,popups:createPopups()},1/60);assert.equal(beside.spikedT,0);
+ console.log('B21-T4 Slow crossing and missing the strip trigger nothing: PASS');
+}
+{
+ const police=createPolice();placeRoadblock(police,seeded,2164,1482,0,0);
+ const trafficCar=createCar(2164,1482,0,1,undefined,'traffic-driven');trafficCar.vx=165;
+ const unit=spawnPolice(police,2164,1482,0);unit.car.vx=165;
+ updateSpikes(police,{vehicle:null,popups:createPopups()},1/60);
+ updateSpikes(police,{vehicle:createCar(500,500,0,0,undefined,'player-driven'),popups:createPopups()},1/60);
+ assert.equal(trafficCar.spikedT,0);assert.equal(unit.car.spikedT,0);
+ console.log('B21-T5 Police and traffic cars are unaffected by the strip: PASS');
+}
+{
+ const laneY=seeded.roads.horizontal[2].y+20;
+ const car=createCar(300,laneY,0,3,undefined,'player-driven');car.spikedT=6;
+ const inputW={isDown:k=>k==='KeyW'};
+ for(let i=0;i<180;i++){updateCar(car,inputW,seeded,1/60);assert(car.speed<=60.5,'spiked cap holds');}
+ assert(car.spikedT>2.9&&car.spikedT<3.1);
+ for(let i=0;i<240;i++)updateCar(car,inputW,seeded,1/60);
+ assert.equal(car.spikedT,0);assert(car.speed>100);
+ console.log('B21-T6 Spiked state caps speed at 60 and expires after 6 s: PASS');
 }

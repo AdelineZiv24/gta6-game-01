@@ -12,6 +12,7 @@ export const REP_COURIER = 15;
 export const REP_STUNT = 10;
 export const REP_DRIFT = 2;
 export const REP_ESCAPE = 10;
+export const REP_PHOTO = 10;
 
 export function repRequired(level) {
   return 50 * (level - 1) * level;
