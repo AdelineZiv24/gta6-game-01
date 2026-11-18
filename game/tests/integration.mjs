@@ -14,7 +14,7 @@ frame();element('new-game').onclick();frame();Object.assign(game.player,game.wor
 game.missions.currentMission=2;Object.assign(game.player,game.world.spawnPoints.diner);key('KeyE');key('KeyE');const rival=game.missions.rival;assert(rival);const origin={x:rival.x,y:rival.y};for(let i=0;i<180;i++){const old={x:rival.x,y:rival.y};frame();assert(Math.hypot(rival.x-old.x,rival.y-old.y)<8,'rival never teleports');assert(!game.world.collidesCircle(rival.x,rival.y,10),'rival stays outside buildings');}assert(Math.hypot(rival.x-origin.x,rival.y-origin.y)>50);console.log('Rival actor moves continuously through main-loop car physics: PASS');
 const before=writes;location.search='?shot=mission';const shot=await import('../src/main.js?shot-test');frame();key('KeyP');assert.equal(writes,before);assert(shot.game.missions);console.log('Main loop, real input, mission autosave, pause, Continue, New Game confirmation, shot hook: PASS');
 
-const {createWorld}=await import('../src/world.js');
+const {createWorld,updateBoats}=await import('../src/world.js');
 const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar,MODELS,drawCar,headlightLevel}=await import('../src/vehicles.js');
 const {createTraffic}=await import('../src/traffic.js');
 const {createPolice,spawnPolice,spawnHeli,updatePolice}=await import('../src/police.js');
@@ -23,7 +23,8 @@ const {createRace,buildRoute,raceStartPoint,startRace,updateRace,racePosition,RA
 const {createFuelState,updateFuel,gasStations}=await import('../src/fuel.js');
 const {createRampage,startRampage,updateRampage,rampageStartPoint,rampagePayout,RAMPAGE_TIME}=await import('../src/rampage.js');
 const {districtTint}=await import('../src/render.js');
-const {createPedestrians,updatePedestrians}=await import('../src/pedestrians.js');
+const {createPedestrians,updatePedestrians,drawPedestrian}=await import('../src/pedestrians.js');
+const {weatherAt,weatherLabel}=await import('../src/weather.js');
 const {createRep,repLevel,repProgress,awardRep,REP_RAMPAGE_CAP}=await import('../src/rep.js');
 const {performerSpot,drawPerformer}=await import('../src/performer.js');
 const seeded=createWorld('1'),again=createWorld('1');
@@ -106,6 +107,9 @@ console.log('Traffic fleets include the flatbed and the roadster: PASS');
  const radio=createRadio();assert.equal(radio.station,0);assert.equal(cycleRadio(radio),1);assert.equal(cycleRadio(radio),2);assert.equal(cycleRadio(radio),0);
 }
 console.log('BAY FM second station and CORAL-BAY-OFF cycle: PASS');
+assert.equal(weatherAt(0),'clear');assert.equal(weatherAt(149.9),'clear');assert.equal(weatherAt(150),'rain');assert.equal(weatherAt(194.9),'rain');assert.equal(weatherAt(195),'clear');assert.equal(weatherAt(355),'rain');assert.equal(weatherAt(-10),'rain');
+assert.equal(weatherLabel(0),'WEATHER · CLEAR');assert.equal(weatherLabel(160),'WEATHER · RAIN');
+console.log('Weather cycle is a pure function of play time: PASS');
 
 const effects=createVehicleEffects(),car=createCar(1000,lane,0,1,undefined,'traffic-driven');
 car.speed=180;updateVehicleEffects(effects,[car],seeded,null,1/60);
@@ -137,6 +141,32 @@ const wallEffects=createVehicleEffects();updateCar(wallCar,{isDown:()=>false},{w
 assert(wallEffects.particles.some(particle=>particle.life>0&&!particle.spark),'wall contact emits dust');
 const popupTest=createPopups(),popupA=spawnPopup(popupTest,100,200,'TEST A'),popupB=spawnPopup(popupTest,300,400,'TEST B','#7be3f0');assert(popupA&&popupB&&popupA.text==='TEST A'&&popupB.text==='TEST B'&&popupA.life>0&&popupB.life>0);updatePopups(popupTest,2);assert.equal(popupA.life,0);assert.equal(popupB.life,0);const pinned=spawnPopup(popupTest,0,0,'PINNED','#ffe16d',999);updatePopups(popupTest,3);assert(pinned.life>0);assert.equal(spawnPopup(null,0,0,'x'),null);console.log('Popup pool lifecycle and null safety: PASS');
 const pool=createPedestrians(seeded,playerCar);assert.equal(pool.people.length,96);assert(new Set(pool.people.map(person=>person.shirt)).size>=10);assert(pool.people.every(person=>person.pants));const walker=pool.people[0];Object.assign(walker,{x:1000,y:lane,state:'walk',panic:0,pause:0});const threatCar=createCar(940,lane,0,1,undefined,'traffic-driven');threatCar.speed=threatCar.vx=170;updatePedestrians(pool,seeded,{x:1000,y:lane},[threatCar],[],1/60,()=>{});assert(walker.panic>0);assert(Math.hypot(walker.x-threatCar.x,walker.y-threatCar.y)>60);console.log('Crowd density, palettes, pants and dodge impulse: PASS');
+{
+ const pool=createPedestrians(seeded,playerCar);
+ const flagged=pool.people.filter(person=>person.umbrella);
+ assert(flagged.length>=24&&flagged.length<=42);
+ const again=createPedestrians(seeded,playerCar);
+ assert.deepEqual(again.people.map(person=>!!person.umbrella),pool.people.map(person=>!!person.umbrella));
+ let ellipses=0;const rec=new Proxy({ellipse:()=>{ellipses+=1;}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ const ped={...flagged[0],state:'walk',stride:0,complaint:0};
+ drawPedestrian(rec,ped,false);const dry=ellipses;ellipses=0;
+ drawPedestrian(rec,ped,true);assert.equal(ellipses,dry+2);
+ const plain=pool.people.find(person=>!person.umbrella);const plainPed={...plain,state:'walk',stride:0,complaint:0};ellipses=0;
+ drawPedestrian(rec,plainPed,true);assert.equal(ellipses,dry);
+}
+console.log('Rain umbrellas on a stable share of the crowd: PASS');
+{
+ const bw=createWorld('1');const b0=bw.boats[0],b3=bw.boats[3],still=bw.boats[1];
+ const startX=b0.x,startY=b0.y,stillX=still.x;
+ for(let i=0;i<600;i++)updateBoats(bw,1/60);
+ assert(b0.x<startX-100);assert.equal(b0.y,startY);assert(b3.x<startX-100);assert.equal(b3.y,3430);assert.equal(still.x,stillX);assert.equal(still.patrol,undefined);
+ assert(b0.patrol.wake.length>0);assert(b0.patrol.wake.every(point=>point.age<1.8));
+ for(let i=0;i<1800;i++)updateBoats(bw,1/60);
+ let min=Infinity,max=-Infinity;
+ for(let i=0;i<10800;i++){updateBoats(bw,1/60);min=Math.min(min,b0.x);max=Math.max(max,b0.x);}
+ assert(min>=2980&&max<=3770);assert(max-min>600);
+}
+console.log('Patrol boats move, turn around and trail wakes in open water: PASS');
 for(let index=0;index<1000;index++)emitVehicleImpact(effects,1000,lane,200,true);
 for(let index=0;index<700;index++){car.x+=2;car.heading+=.03;updateVehicleEffects(effects,[car],seeded,null,1/60);}
 assert(effects.markCursor>420,'skid pool wraps safely under sustained turning');
@@ -268,6 +298,8 @@ for(const scene of ['start','mission','foot','chase','cover']){
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
  if(scene==='chase'){assert(staged.rep);assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);assert(staged.race);assert.equal(staged.race.phase,'running');assert(staged.race.rival);assert.equal(staged.race.checkpoints.length,5);assert.equal(staged.race.position,2);assert(responseRows(staged).every(row=>typeof row.callsign==='string'&&row.callsign.length>0));}
+ if(scene==='cover'||scene==='chase'||scene==='mission')assert.equal(weatherAt(staged.playSeconds),'clear');
+ if(scene==='foot')assert.equal(weatherAt(staged.playSeconds),'rain');
  if(scene==='cover'){
   assert(staged.radio);assert.equal(staged.radio.station,0);assert(headlightLevel(staged.clockMinutes)>0.5);
   assert(staged.rep);assert.equal(staged.rep.xp,0);

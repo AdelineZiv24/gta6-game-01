@@ -228,6 +228,7 @@ function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
   for (const building of world.buildings) if (visible(building, view)) drawBuilding(context, building, night);
   for (const prop of world.props) if (prop.x >= view.x - 42 && prop.x <= view.x + view.width + 42 && prop.y >= view.y - 48 && prop.y <= view.y + view.height + 48) drawProp(context, prop, night);
   for (const boat of world.boats) if (boat.x >= view.x - 70 && boat.x <= view.x + view.width + 70 && boat.y >= view.y - 40 && boat.y <= view.y + view.height + 40) {
+    if (boat.patrol) for (const point of boat.patrol.wake) { context.fillStyle = `rgba(235,250,245,${0.16 * (1 - point.age / 1.8)})`; context.beginPath(); context.ellipse(point.x, point.y, 6 + point.age * 7, 3.5 + point.age * 3.5, 0, 0, Math.PI * 2); context.fill(); }
     context.save(); context.translate(boat.x, boat.y); context.rotate(boat.heading); context.fillStyle = '#f4e3bf';
     context.beginPath(); context.moveTo(-boat.length / 2, 0); context.lineTo(-boat.length / 2 + 10, -9); context.lineTo(boat.length / 2, -6); context.lineTo(boat.length / 2 - 8, 9); context.closePath(); context.fill();
     context.fillStyle = '#50858b'; context.fillRect(-boat.length * .16, -5, boat.length * .3, 8); context.restore();

@@ -167,3 +167,26 @@ export function createWorld(seed = WORLD.seed) {
 }
 
 export const worldGeometry = { intersects, pointInRect };
+export function updateBoats(world, dt) {
+  for (const index of [0, 3]) {
+    const boat = world.boats[index];
+    if (!boat) continue;
+    if (!boat.patrol) boat.patrol = { dir: -1, heading: boat.heading, wake: [], timer: 0 };
+    const p = boat.patrol;
+    boat.x += p.dir * 15 * dt;
+    if (boat.x < 2980) { boat.x = 2980; p.dir = 1; }
+    if (boat.x > 3770) { boat.x = 3770; p.dir = -1; }
+    const target = p.dir > 0 ? 0 : Math.PI;
+    const diff = ((target - p.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    p.heading += Math.max(-0.8 * dt, Math.min(0.8 * dt, diff));
+    boat.heading = p.heading + Math.sin(boat.x * 0.01) * 0.04;
+    p.timer -= dt;
+    if (p.timer <= 0) {
+      p.timer = 0.14;
+      p.wake.push({ x: boat.x - Math.cos(boat.heading) * boat.length / 2, y: boat.y - Math.sin(boat.heading) * boat.length / 2, age: 0 });
+      if (p.wake.length > 16) p.wake.shift();
+    }
+    for (const point of p.wake) point.age += dt;
+    p.wake = p.wake.filter(point => point.age < 1.8);
+  }
+}

@@ -27,7 +27,7 @@ export function createPedestrians(world,focus) {
     a.links[k]=mid;b.links[b.links.indexOf(i)]=mid+1;
   }
   const pool={nodes,people:[],lastCrime:0};
-  for(let i=0;i<96;i++){const n=Math.floor(random()*nodes.length),p=makePerson(nodes[n].x,nodes[n].y);p.node=n;p.target=nodes[n].links[0];pool.people.push(p);}
+  for(let i=0;i<96;i++){const n=Math.floor(random()*nodes.length),p=makePerson(nodes[n].x,nodes[n].y);p.node=n;p.target=nodes[n].links[0];p.umbrella=(Math.imul(i+1,2654435761)>>>0)%100<35;pool.people.push(p);}
   return pool;
 }
 function makePerson(x,y){return {x,y,node:0,target:0,state:'walk',pause:random(),panic:0,facing:0,stride:0,shirt:shirts[Math.floor(random()*shirts.length)],skin:skins[Math.floor(random()*skins.length)],pants:pants[Math.floor(random()*pants.length)],complaint:0,hitCooldown:0};}
@@ -57,4 +57,4 @@ export function updatePedestrians(pool,world,focus,cars,crimes,dt,report) {
   }
   if(crimes.length)pool.lastCrime=crimes[crimes.length-1].id;
 }
-export function drawPedestrian(ctx,p){ctx.save();ctx.fillStyle='rgba(23,49,48,.2)';ctx.beginPath();ctx.ellipse(p.x,p.y+6,10,4,0,0,Math.PI*2);ctx.fill();ctx.translate(p.x,p.y);ctx.rotate(p.facing);if(p.state==='down'){ctx.fillStyle='#714d44';ctx.beginPath();ctx.ellipse(0,0,16,8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=p.shirt;ctx.fillRect(-9,-5,15,10);ctx.fillStyle=p.skin;ctx.beginPath();ctx.arc(10,0,5,0,7);ctx.fill();}else{ctx.fillStyle=p.pants||'#29414b';const swing=Math.sin(p.stride)*3;ctx.fillRect(-5+swing,-7,9,4);ctx.fillRect(-5-swing,3,9,4);ctx.fillStyle=p.shirt;ctx.beginPath();ctx.ellipse(0,0,7,9,0,0,7);ctx.fill();ctx.fillStyle=p.skin;ctx.beginPath();ctx.arc(3,0,5,0,7);ctx.fill();}ctx.restore();if(p.complaint>0){ctx.fillStyle='#fff4dc';ctx.font='bold 11px system-ui';ctx.fillText('Watch it!',p.x-20,p.y-19);}}
+export function drawPedestrian(ctx,p,rain=false){ctx.save();ctx.fillStyle='rgba(23,49,48,.2)';ctx.beginPath();ctx.ellipse(p.x,p.y+6,10,4,0,0,Math.PI*2);ctx.fill();ctx.translate(p.x,p.y);ctx.rotate(p.facing);if(p.state==='down'){ctx.fillStyle='#714d44';ctx.beginPath();ctx.ellipse(0,0,16,8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=p.shirt;ctx.fillRect(-9,-5,15,10);ctx.fillStyle=p.skin;ctx.beginPath();ctx.arc(10,0,5,0,7);ctx.fill();}else{ctx.fillStyle=p.pants||'#29414b';const swing=Math.sin(p.stride)*3;ctx.fillRect(-5+swing,-7,9,4);ctx.fillRect(-5-swing,3,9,4);ctx.fillStyle=p.shirt;ctx.beginPath();ctx.ellipse(0,0,7,9,0,0,7);ctx.fill();ctx.fillStyle=p.skin;ctx.beginPath();ctx.arc(3,0,5,0,7);ctx.fill();}if(rain&&p.umbrella&&p.state!=='down'){ctx.fillStyle=p.shirt;ctx.beginPath();ctx.ellipse(2,0,12.5,8.5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(255,240,207,.9)';ctx.beginPath();ctx.ellipse(2,0,7,4.8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#31456b';ctx.fillRect(1.2,-0.8,1.6,6);}ctx.restore();if(p.complaint>0){ctx.fillStyle='#fff4dc';ctx.font='bold 11px system-ui';ctx.fillText('Watch it!',p.x-20,p.y-19);}}

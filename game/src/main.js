@@ -2,7 +2,7 @@ import { createWanted, updateWanted, clearWanted, setWanted } from './wanted.js'
 import { createPolice, spawnPolice, spawnHeli, updatePolice, drawOfficers, drawHeliLight, drawHeli } from './police.js';
 import { createCombat, grantPistol, updateCombat, policeFire, damagePlayer, drawCombat } from './combat.js';
 import { WORLD } from './config.js';
-import { createWorld } from './world.js';
+import { createWorld, updateBoats } from './world.js';
 import { createRenderer, drawMinimapBase } from './render.js';
 import { createInput } from './input.js';
 import { createPlayer, updatePlayer, drawPlayer } from './player.js';
@@ -20,6 +20,7 @@ import { createRampage, updateRampage, drawRampageWorld } from './rampage.js';
 import { createRep } from './rep.js';
 import { createRadio, cycleRadio } from './radio.js';
 import { drawPerformer } from './performer.js';
+import { weatherAt, drawRain } from './weather.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -143,6 +144,7 @@ function startGame(foot = false, record=null) {
   if(record?.currentCar){game.vehicle=createCar(record.currentCar.x,record.currentCar.y,record.currentCar.heading,modelByName(record.currentCar.model),record.currentCar.color,'player-driven');game.vehicle.health=record.currentCar.health;parked.push(game.vehicle);game.player.x=game.vehicle.x;game.player.y=game.vehicle.y;}
   traffic=createTraffic(world,game.player);pedestrians=createPedestrians(world,game.player);
   if(shot==='foot'){
+    game.playSeconds=160;
     const road=world.roads.vertical.reduce((best,item)=>Math.abs(item.x-game.player.x)<Math.abs(best.x-game.player.x)?item:best);
     const taxi=createCar(road.x,game.player.y+170,Math.PI/2,5,undefined,'traffic-driven');taxi.speed=115;traffic.cars.push(taxi);
     pedestrians.people.push(...Array.from({length:5},(_,i)=>{const p={...pedestrians.people[i],x:road.x-58+i*25,y:game.player.y+105,facing:Math.PI/2,state:'walk',pause:0};return p;}));
@@ -252,6 +254,7 @@ function update(dt, time) {
     updateVehicleEffects(game.vehicleEffects,allCars,world,game.vehicle,dt,game.popups);updatePopups(game.popups,dt);
     if(game.vehicle&&carHealth>game.vehicle.health)damagePlayer(game,(carHealth-game.vehicle.health)*.65);
     updatePedestrians(pedestrians,world,focus,allCars,game.recentCrimes,dt,reportCrime);
+    updateBoats(world,dt);
     if(game.vehicle){game.player.x=game.vehicle.x;game.player.y=game.vehicle.y;game.player.facing=game.vehicle.heading;
       if(game.vehicle.impact>65&&game.vehicle.cooldown===0){reportCrime('reckless_crash',focus.x,focus.y,1,false);game.vehicle.cooldown=.8;}}
 
@@ -299,7 +302,8 @@ function frame(time) {
     const camera=renderer.camera;
     drawVehicleEffects(ctx,game.vehicleEffects,camera.view());
     drawHeliLight(ctx,game.police);
-    for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p);
+    const raining=weatherAt(game.playSeconds)==='rain';
+    for(const p of pedestrians.people)if(Math.abs(p.x-camera.x)<camera.width/2+40&&Math.abs(p.y-camera.y)<camera.height/2+40)drawPedestrian(ctx,p,raining);
     drawPerformer(ctx,game,time);
     const lightLevel=headlightLevel(game.clockMinutes);
     for(const car of allCars)if(Math.abs(car.x-camera.x)<camera.width/2+60&&Math.abs(car.y-camera.y)<camera.height/2+60)drawCar(ctx,car,time,lightLevel);
@@ -313,6 +317,7 @@ function frame(time) {
     if(!game.vehicle)drawPlayer(ctx,game.player,accumulator/STEP);
     drawCombat(ctx,game);
     drawPopups(ctx,game.popups);
+    if(raining)drawRain(ctx,game,time);
     drawHUD(ctx,game);
   }
   input.endFrame(); requestAnimationFrame(frame);

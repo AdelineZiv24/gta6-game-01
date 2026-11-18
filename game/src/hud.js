@@ -2,6 +2,7 @@ import { WORLD, FONT } from './config.js';
 import { repProgress } from './rep.js';
 import { stationNow } from './radio.js';
 import { gasStations } from './fuel.js';
+import { weatherLabel } from './weather.js';
 
 export function responseRows(game) {
   const focus = game.vehicle || game.player;
@@ -62,7 +63,7 @@ export function drawHUD(ctx, game) {
   panel(Math.max(inset,w-230),20,Math.min(210,w-2*inset),73);ctx.textAlign='right';ctx.fillStyle='#f9d777';ctx.font=`bold 22px ${FONT}`;ctx.fillText(`$${player.cash.toLocaleString('en-US')}`,w-inset-14,45);
   const rep=repProgress(game.rep?.xp??0);ctx.textAlign='left';ctx.fillStyle='#71d3d9';ctx.font=`bold 11px ${FONT}`;ctx.fillText(`REP LV ${rep.level}`,w-216,45);ctx.fillStyle='#ffffff28';ctx.fillRect(w-216,86,182,4);ctx.fillStyle='#71d3d9';ctx.fillRect(w-216,86,Math.round(182*rep.fraction),4);ctx.textAlign='right';
   const minutes = Math.floor(game.clockMinutes) % 1440;
-  ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}  •  CORAL BAY`,w-34,75);
+  ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}  •  ${weatherLabel(game.playSeconds)}`,w-34,75);
   if (objective?.text) {
     const bw=Math.min(560,w-40); const top=w<1000?122:22;
     panel((w-bw)/2,top,bw,66);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText('CURRENT OBJECTIVE',(w)/2,top+17);
