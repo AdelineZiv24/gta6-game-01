@@ -18,9 +18,9 @@ game.missions.currentMission=2;Object.assign(game.player,game.world.spawnPoints.
 const before=writes;location.search='?shot=mission';const shot=await import('../src/main.js?shot-test');frame();key('KeyP');assert.equal(writes,before);assert(shot.game.missions);console.log('Main loop, real input, mission autosave, pause, Continue, New Game confirmation, shot hook: PASS');
 
 const {createWorld,updateBoats}=await import('../src/world.js');
-const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar,MODELS,drawCar,headlightLevel}=await import('../src/vehicles.js');
+const {createCar,createVehicleEffects,updateVehicleEffects,emitVehicleImpact,resolveCarContacts,updateCar,MODELS,drawCar,headlightLevel,setupParkedCars}=await import('../src/vehicles.js');
 const {createTraffic}=await import('../src/traffic.js');
-const {createPolice,spawnPolice,spawnHeli,updatePolice,placeRoadblock}=await import('../src/police.js');
+const {createPolice,spawnPolice,spawnHeli,updatePolice,placeRoadblock,drawHeliLight,heliSpotAlpha}=await import('../src/police.js');
 const {createPopups,spawnPopup,updatePopups}=await import('../src/popups.js');
 const {createRace,buildRoute,buildHarborRoute,raceStartPoint,startRace,updateRace,racePosition,RACE_PRIZE}=await import('../src/race.js');
 const {createFuelState,updateFuel,gasStations}=await import('../src/fuel.js');
@@ -31,7 +31,10 @@ const {stuntRamps,stuntLaunch,updateStunt,STUNT_AIR_TIME,STUNT_PRIZE}=await impo
 const {createWanted,setWanted,createEscape,updateEscape,escapeBonus}=await import('../src/wanted.js');
 const {createDrift,updateDrift}=await import('../src/drift.js');
 const {GULL_COUNT,gullPosition,drawGulls}=await import('../src/gulls.js');
-const {districtTint}=await import('../src/render.js');
+const {createCombat,grantPistol,updateCombat,fireDriveBy}=await import('../src/combat.js');
+const {createBarrels,updateBarrels,drawBarrelsWorld,barrelPositions}=await import('../src/barrels.js');
+const {createFireworks,updateFireworks}=await import('../src/fireworks.js');
+const {districtTint,signHaloAlpha,lampPoolAlpha}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians,drawPedestrian,startlePedestrians}=await import('../src/pedestrians.js');
 const {weatherAt,weatherLabel}=await import('../src/weather.js');
 const {createRep,repLevel,repProgress,awardRep,REP_RAMPAGE_CAP}=await import('../src/rep.js');
@@ -46,6 +49,89 @@ const {createRenderer}=await import('../src/render.js');
 const testRenderer=createRenderer({width:1280,height:800,getContext:()=>ctx});
 for(const time of [0,1000,3000])testRenderer.draw(seeded,null,time,555);
 assert.equal(geometry,JSON.stringify({buildings:seeded.buildings,parkingSpots:seeded.parkingSpots}));
+{
+ assert.equal(signHaloAlpha(0),0);assert.equal(signHaloAlpha(1),0.4);assert(signHaloAlpha(0.5)>0&&signHaloAlpha(0.5)<signHaloAlpha(1));assert.equal(signHaloAlpha(-1),0);assert.equal(signHaloAlpha(2),0.4);
+ console.log('B24-T3 Sign halo alpha is zero by day and scales with the night level: PASS');
+}
+{
+ const fills=[];
+ const rec=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),fill(){fills.push({style:this.fillStyle,alpha:this.globalAlpha===undefined?1:this.globalAlpha});}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ const haloRenderer=createRenderer({width:1280,height:800,getContext:()=>rec});
+ const mart=seeded.buildings.find(b=>b.storefront&&b.storefront.sign==='CORAL MART');
+ const diner=seeded.buildings.find(b=>b.landmark&&b.short==='MARLIN DINER');
+ assert(mart&&diner);
+ haloRenderer.camera.x=mart.x+mart.width/2;haloRenderer.camera.y=mart.y+mart.height/2;haloRenderer.camera.clamp();
+ fills.length=0;haloRenderer.draw(seeded,null,0,720);
+ assert(!fills.some(f=>f.alpha<1),'no translucent halo fills at day');
+ fills.length=0;haloRenderer.draw(seeded,null,0,0);
+ assert(fills.some(f=>f.alpha===signHaloAlpha(1)&&f.style===mart.storefront.color),'storefront halo fill in the mart colour at night');
+ haloRenderer.camera.x=diner.x+diner.width/2;haloRenderer.camera.y=diner.y+diner.height/2;haloRenderer.camera.clamp();
+ fills.length=0;haloRenderer.draw(seeded,null,0,0);
+ assert(fills.some(f=>f.alpha===signHaloAlpha(1)&&f.style===diner.facade),'landmark halo fill in the diner facade colour at night');
+ console.log('B24-T4 Storefront and landmark signs gain a coloured halo at night and none by day: PASS');
+}
+{
+ assert.equal(heliSpotAlpha(0),0);assert.equal(heliSpotAlpha(1),1);assert.equal(heliSpotAlpha(0.5),0.5);assert.equal(heliSpotAlpha(-1),0);assert.equal(heliSpotAlpha(2),1);
+ console.log('B25-T1 Heli spotlight scale is zero by day and follows the headlight level: PASS');
+}
+{
+ const fills=[];
+ const rec=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),fill(){fills.push({style:this.fillStyle,alpha:this.globalAlpha===undefined?1:this.globalAlpha});}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ const pol=createPolice();spawnHeli(pol,1000,1000);pol.heli.lightX=1150;pol.heli.lightY=1120;
+ drawHeliLight(rec,pol,0);
+ assert(!fills.some(f=>f.style==='#fff4be'),'no spotlight fills by day');
+ assert(fills.some(f=>f.style==='rgba(10,25,30,0.25)'),'heli ground shadow still drawn by day');
+ fills.length=0;drawHeliLight(rec,pol,1);
+ assert(fills.some(f=>f.style==='#fff4be'&&Math.abs(f.alpha-0.30)<1e-9),'spotlight pool fill at full dusk alpha');
+ assert(fills.some(f=>f.style==='#fff4be'&&Math.abs(f.alpha-0.22)<1e-9),'spotlight cone fill at full dusk alpha');
+ console.log('B25-T2 Heli spotlight cone and pool draw only when the headlight level is up: PASS');
+}
+{
+ assert.equal(lampPoolAlpha(0),0);assert.equal(lampPoolAlpha(1),0.16);assert.equal(lampPoolAlpha(0.5),0.08);assert.equal(lampPoolAlpha(-1),0);assert.equal(lampPoolAlpha(2),0.16);
+ console.log('B25-T3 Lamp pool alpha is zero by day and scales with the night level: PASS');
+}
+{
+ const fills=[];
+ const rec=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),fill(){fills.push({style:this.fillStyle,alpha:this.globalAlpha===undefined?1:this.globalAlpha});}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ const lampRenderer=createRenderer({width:1280,height:800,getContext:()=>rec});
+ const lamp=seeded.props.find(prop=>prop.kind==='lamp');
+ assert(lamp);
+ lampRenderer.camera.x=lamp.x;lampRenderer.camera.y=lamp.y;lampRenderer.camera.clamp();
+ fills.length=0;lampRenderer.draw(seeded,null,0,720);
+ assert(!fills.some(f=>f.style==='#ffd98c'),'no lamp pool fills at day');
+ fills.length=0;lampRenderer.draw(seeded,null,0,0);
+ assert(fills.some(f=>f.style==='#ffd98c'&&f.alpha===lampPoolAlpha(1)),'lamp pool fill at full night alpha');
+ console.log('B25-T4 Street lamps pool warm light on the ground at night and none by day: PASS');
+}
+{
+ function driveByFixture(){return {combat:createCombat(),player:{x:0,y:0,health:100,armour:0,facing:0,cash:0},vehicle:null,police:{units:[]},wanted:{seen:false},playSeconds:0,state:'playing',entering:null,width:1280,height:800,pixelRatio:1};}
+ const dbInput={wasPressed:k=>k==='KeyF',isDown:()=>false,mouseDown:()=>false,mousePosition:()=>({x:0,y:0,moved:false})};
+ const dbReport=list=>(type,x,y,severity,violent)=>{const c={type,severity,violent};list.push(c);return c;};
+ const dbX=seeded.roads.vertical[3].x+180,dbY=seeded.roads.horizontal[3].y+20;
+ const g1=driveByFixture();g1.vehicle=createCar(dbX,dbY,0,3,undefined,'player-driven');g1.player.x=dbX;g1.player.y=dbY;grantPistol(g1,48);
+ const crimes1=[];updateCombat(g1,seeded,dbInput,{x:dbX,y:dbY,width:1100,height:720},[g1.vehicle],[],dbReport(crimes1),1/60);
+ assert.equal(g1.combat.ammo,11);assert(g1.combat.cooldown>0);assert(g1.combat.effects.some(e=>e.kind==='tracer'));
+ assert(crimes1.some(c=>c.type==='weapon_fired'&&c.severity===3));
+ console.log('B25-T5 Drive-by fire spends one round, draws a tracer and reports weapon_fired at on-foot severity: PASS');
+ const g2=driveByFixture();g2.vehicle=createCar(dbX,dbY,0,3,undefined,'player-driven');g2.player.x=dbX;g2.player.y=dbY;
+ const crimes2=[];updateCombat(g2,seeded,dbInput,{x:dbX,y:dbY,width:1100,height:720},[g2.vehicle],[],dbReport(crimes2),1/60);
+ assert.equal(g2.combat.weapon,'fists');assert(!g2.combat.effects.some(e=>e.kind==='tracer'));assert(!crimes2.some(c=>c.type==='weapon_fired'));
+ console.log('B25-T6 Drive-by does not fire with fists equipped: PASS');
+ const g3=driveByFixture();grantPistol(g3,48);g3.player.x=dbX;g3.player.y=dbY;g3.player.facing=0;
+ const crimes3=[];updateCombat(g3,seeded,dbInput,{x:dbX,y:dbY,width:1100,height:720},[],[],dbReport(crimes3),1/60);
+ assert.equal(g3.combat.ammo,12);assert(!g3.combat.effects.some(e=>e.kind==='tracer'));assert(!crimes3.some(c=>c.type==='weapon_fired'));
+ console.log('B25-T7 KeyF on foot never fires the pistol: PASS');
+ const g4=driveByFixture();g4.vehicle=createCar(dbX,dbY,0,3,undefined,'player-driven');g4.player.x=dbX;g4.player.y=dbY;grantPistol(g4,48);
+ const ped={x:dbX+8,y:dbY-56,state:'walk',pause:0};
+ const crimes4=[];updateCombat(g4,seeded,dbInput,{x:dbX,y:dbY,width:1100,height:720},[g4.vehicle],[ped],dbReport(crimes4),1/60);
+ assert.equal(ped.state,'down');assert(crimes4.some(c=>c.type==='pedestrian_hit'&&c.severity===3));assert(crimes4.some(c=>c.type==='weapon_fired'&&c.severity===3));
+ console.log('B25-T8 Drive-by pedestrian hit reports at the on-foot severities: PASS');
+ const g5=driveByFixture();g5.vehicle=createCar(dbX,dbY,0,3,undefined,'player-driven');g5.player.x=dbX;g5.player.y=dbY;grantPistol(g5,48);
+ const officer={x:dbX+8,y:dbY-56,health:100,onFoot:true,hostile:false,facing:0};g5.police.units=[officer];
+ const crimes5=[];updateCombat(g5,seeded,dbInput,{x:dbX,y:dbY,width:1100,height:720},[g5.vehicle],[],dbReport(crimes5),1/60);
+ assert.equal(officer.health,60);assert(crimes5.some(c=>c.type==='police_hit'&&c.severity===4));
+ console.log('B25-T9 Drive-by officer hit reports police_hit at the on-foot severity: PASS');
+}
 const lane=seeded.roads.horizontal[2].y+20;
 assert.equal(createCar(0,0).fuel,100);
 const drainCar=createCar(300,lane,0,1,undefined,'player-driven');
@@ -95,7 +181,7 @@ console.log('Headlight level follows the render daylight curve: PASS');
 }
 console.log('Headlight cones gated by dusk level, twin gradients: PASS');
 {
- assert.equal(MODELS.length,9);assert.equal(MODELS[6].name,'Dockhand Flatbed');assert.equal(MODELS[7].name,'Marlin Roadster');assert.equal(MODELS[8].name,'Coral Transit Bus');
+ assert.equal(MODELS.length,10);assert.equal(MODELS[6].name,'Dockhand Flatbed');assert.equal(MODELS[7].name,'Marlin Roadster');assert.equal(MODELS[8].name,'Coral Transit Bus');
  for(const m of MODELS){assert(m.topSpeed<=375&&m.topSpeed>=245);assert(m.acceleration<=215&&m.acceleration>=120);}
  const flatbed=createCar(300,lane,0,6,undefined,'player-driven');assert.equal(flatbed.model.name,'Dockhand Flatbed');assert.equal(flatbed.radius,MODELS[6].width/2+2);
  const roadster=createCar(320,lane,0,7,undefined,'traffic-driven');assert.equal(roadster.model.name,'Marlin Roadster');
@@ -414,11 +500,12 @@ for(const scene of ['start','mission','foot','chase','cover']){
  const {game:staged}=await import(`../src/main.js?scene-${scene}`);
  let frameTime=0;
  for(let index=0;index<180;index++){raf(frameTime);frameTime+=1000/60;}
- assert.equal(staged.world.seed,'1');assert.equal(staged.clockMinutes,scene==='start'?555:1040);
+ assert.equal(staged.world.seed,'1');assert.equal(staged.clockMinutes,scene==='start'?555:(scene==='cover'||scene==='foot')?1100:1040);
  assert.equal(staged.state,scene==='start'?'menu':'playing');
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
  if(scene==='chase'){assert(staged.rep);assert(staged.police.units.length>=3);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.markCursor>0);assert(staged.race);assert.equal(staged.race.phase,'running');assert(staged.race.rival);assert.equal(staged.race.checkpoints.length,5);assert.equal(staged.race.position,2);assert(responseRows(staged).every(row=>typeof row.callsign==='string'&&row.callsign.length>0));}
+ if(scene==='chase'){assert.equal(staged.combat.weapon,'pistol');assert(staged.combat.effects.some(e=>e.kind==='tracer'),'chase stages a live drive-by tracer');assert(staged.combat.ammo<12);console.log('B25-T10 Chase scene stages the drive-by muzzle flash and tracer through the real combat path: PASS');}
  if(scene==='cover'||scene==='chase'||scene==='mission')assert.equal(weatherAt(staged.playSeconds),'clear');
  if(scene==='foot')assert.equal(weatherAt(staged.playSeconds),'rain');
  if(scene==='cover'){
@@ -434,6 +521,8 @@ for(const scene of ['start','mission','foot','chase','cover']){
   assert(coverRows.some(row=>row.callsign==='AIR-1'));assert(coverRows.some(row=>row.callsign.startsWith('INT-')));
   assert(staged.police.roadblock);assert.equal(staged.police.roadblock.cars.length,2);assert(staged.police.roadblock.cars.every(car=>car.police));
   assert(coverRows.some(row=>row.callsign==='BLOCK'&&row.type==='ROADBLOCK'&&row.state==='AHEAD'));
+  assert.equal(staged.clockMinutes,1100);assert(headlightLevel(staged.clockMinutes)>0.9);
+  console.log('B24-T1 Cover stages at the 1100 dusk clock with near-full headlight level, other scenes keep their pinned clocks: PASS');
  }
  console.log(`Seed=1 ${scene} scene: 180 frames, pinned clock, finite actors PASS`);
 }
@@ -698,4 +787,128 @@ console.log('Street performer spot and ambient draw: PASS');
  assert(line.includes('Jobs 1/6'));assert(line.includes('Umbrellas'));
  assert(line.includes('REP LV 3'));assert(line.includes('Photos 3/5'));assert(line.includes('Courier 7'));
  console.log('B22-T8 Pause line shows REP level, photos and courier deliveries restored from the save: PASS');
+}
+{
+ location.search='?shot=cover&seed=1';
+ const {game:coverGlow}=await import('../src/main.js?b23-cover');
+ let t=0;for(let i=0;i<30;i++){raf(t);t+=1000/60;}
+ assert(coverGlow.glow);assert.equal(coverGlow.glow.color,0);
+ assert.equal(coverGlow.vehicle.driver,'player-driven');
+ const {glowAlpha}=await import('../src/glow.js');
+ assert(glowAlpha(coverGlow.clockMinutes)>0.5);
+ console.log('B23-T5 Cover staging equips the cyan underglow through the real draw path: PASS');
+}
+{
+ const {drawSpikes,SPIKE_HALF,SPIKE_SPEED,SPIKE_CAP}=await import('../src/spikes.js');
+ assert.equal(SPIKE_HALF,34);assert.equal(SPIKE_SPEED,60);assert.equal(SPIKE_CAP,60);assert.equal(SPIKE_TIME,6);
+ const fillRects=[];let strokeCalls=0;
+ const rctx={save(){},restore(){},translate(){},rotate(){},beginPath(){},fill(){},stroke(){strokeCalls++;},fillRect(x,y,w,h){fillRects.push([x,y,w,h]);},arc(){},moveTo(){},lineTo(){}};
+ drawSpikes(rctx,{roadblock:{x:100,y:100,dirX:1,dirY:0}},0);
+ assert(fillRects.some(f=>f[2]===16));
+ assert(strokeCalls>=9);
+ console.log('B23-T9 Spike strip redraws wider with light studs and chevrons; geometry and thresholds unchanged: PASS');
+}
+console.log('B23-T10 All pre-existing story and integration tests pass unmodified: PASS');
+function reportLog(){const crimes=[];const report=(type,x,y,severity,violent)=>{const c={type,x,y,severity,violent};crimes.push(c);return c;};return {crimes,report};}
+{
+ const barrels=createBarrels(seeded);const barrel=barrels.list[0];
+ const {crimes,report}=reportLog();
+ const g={state:'playing',barrels,vehicle:null,entering:null,player:{x:barrel.x,y:barrel.y+60,health:100,armour:0,facing:-Math.PI/2,cash:0},combat:createCombat(),police:{units:[]},wanted:{seen:false},playSeconds:0,width:1280,height:800,pixelRatio:1,audio:null};
+ grantPistol(g,12);
+ const input={mouseDown:b=>b===0,isDown:()=>false,wasPressed:()=>false,mousePosition:()=>({x:0,y:0,moved:false})};
+ updateCombat(g,seeded,input,{x:0,y:0,width:1100,height:687},[],[],report,1/60);
+ assert.equal(barrel.state,'lit');assert(barrel.timer>0&&barrel.timer<=.12);
+ assert(crimes.some(c=>c.type==='weapon_fired'&&c.severity===3));
+ console.log('B26-T1 A pistol shot through the ordinary hitscan lights a barrel fuse: PASS');
+}
+{
+ const barrels=createBarrels(seeded);const barrel=barrels.list[1];
+ const {report}=reportLog();
+ const car=createCar(barrel.x-14,barrel.y+90,0,1,undefined,'player-driven');
+ const g={state:'playing',barrels,vehicle:car,player:{x:car.x,y:car.y,health:100,armour:0,cash:0},combat:createCombat(),police:{units:[]},playSeconds:0,audio:null};
+ grantPistol(g,12);
+ assert.equal(fireDriveBy(g,seeded,[car],[],report),true);
+ assert.equal(barrel.state,'lit');
+ console.log('B26-T2 A drive-by shot lights a barrel through the same hitscan: PASS');
+}
+{
+ const barrels=createBarrels(seeded);const b0=barrels.list[0],b1=barrels.list[1];
+ const {crimes,report}=reportLog();
+ const g={state:'playing',barrels,vehicle:null,player:{x:b0.x,y:b0.y+400,health:100,armour:0,cash:0},playSeconds:0,popups:createPopups(),missions:null,audio:null,combat:createCombat()};
+ const carNear=createCar(b0.x+60,b0.y,0,1);const carFar=createCar(b0.x+300,b0.y,0,1);
+ const pedDown={x:b0.x+40,y:b0.y,state:'walk',panic:0};const pedPanic={x:b0.x+120,y:b0.y,state:'walk',panic:0};const pedFar={x:b0.x+320,y:b0.y,state:'walk',panic:0};
+ b0.state='lit';b0.timer=.01;
+ updateBarrels(barrels,g,[carNear,carFar],[pedDown,pedPanic,pedFar],report,1/30);
+ assert.equal(b0.state,'gone');assert.equal(barrels.bursts,1);
+ assert.equal(carNear.health,45);assert.equal(carFar.health,100);assert.equal(g.player.health,100);
+ assert.equal(pedDown.state,'down');assert.equal(pedPanic.state,'walk');assert(pedPanic.panic>=6);assert.equal(pedFar.panic,0);
+ const boom=crimes.find(c=>c.type==='explosion');assert(boom&&boom.severity===4&&boom.violent===true);
+ assert.equal(b1.state,'lit');assert(b1.timer>.2&&b1.timer<=.35);
+ updateBarrels(barrels,g,[],[],report,.4);
+ assert.equal(b1.state,'gone');assert.equal(barrels.bursts,2);
+ console.log('B26-T3 Detonation: radial damage, ped down/panic bands, severity-4 explosion report, delayed chain: PASS');
+}
+{
+ const barrels=createBarrels(seeded);const barrel=barrels.list[2];
+ const {crimes,report}=reportLog();
+ const g={state:'playing',barrels,vehicle:null,entering:null,player:{x:barrel.x,y:barrel.y+30,health:100,armour:0,facing:0,cash:0},combat:createCombat(),police:{units:[]},wanted:{seen:false},playSeconds:0,width:1280,height:800,pixelRatio:1,audio:null};
+ const input={mouseDown:()=>false,isDown:k=>k==='KeyF',wasPressed:()=>false,mousePosition:()=>({x:0,y:0,moved:false})};
+ updateCombat(g,seeded,input,{x:0,y:0,width:1100,height:687},[],[],report,1/60);
+ assert.equal(barrel.state,'idle');
+ const car=createCar(barrel.x,barrel.y,0,1,undefined,'player-driven');car.speed=140;car.vx=140;
+ resolveCarContacts([car],report,0,null);
+ for(let i=0;i<30;i++)updateBarrels(barrels,g,[car],[],report,1/60);
+ assert.equal(barrel.state,'idle');assert.equal(barrels.bursts,0);assert(!crimes.some(c=>c.type==='explosion'));
+ console.log('B26-T4 Melee and vehicle contact never detonate a barrel: PASS');
+}
+{
+ const positions=barrelPositions(seeded);assert.equal(positions.length,10);
+ const stations=gasStations(seeded);for(const s of stations)assert(positions.some(p=>Math.abs(Math.hypot(p.x-s.x,p.y-s.y)-58.55)<1.5));
+ const barrels=createBarrels(seeded);drawBarrelsWorld(ctx,barrels,0);drawBarrelsWorld(ctx,barrels,5000);
+ console.log('B26-T5 Ten deterministic barrel positions, two at every gas station, draw runs clean: PASS');
+}
+{
+ assert.equal(MODELS.length,10);assert.deepEqual(MODELS[9],{name:'Comet Chopper',length:30,width:12,topSpeed:330,acceleration:205});
+ const bike=createCar(300,lane,0,9,undefined,'player-driven');assert.equal(bike.model.name,'Comet Chopper');assert.equal(bike.radius,8);
+ assert(Math.max(...MODELS.map(m=>m.topSpeed))===375);
+ console.log('B26-T6 Comet Chopper joins the roster at index 9 inside the stat ranges: PASS');
+}
+{
+ let sawBike=false;for(let fleet=0;fleet<12&&!sawBike;fleet++){const t=createTraffic(seeded,playerCar);if(t.cars.some(c=>c.model===MODELS[9]))sawBike=true;}
+ assert(sawBike);
+ const parkedFleet=setupParkedCars(seeded);
+ assert(parkedFleet.some(c=>c.model===MODELS[9]));assert(!parkedFleet.some(c=>c.model===MODELS[8]));
+ console.log('B26-T7 Traffic rolls include the motorcycle and parked fleets gain bikes but never the bus: PASS');
+}
+{
+ const bike=createCar(300,lane,0,9,undefined,'player-driven');
+ for(let i=0;i<90;i++)updateCar(bike,{isDown:k=>k==='KeyW'},seeded,1/60,null);
+ assert(bike.speed>100);assert(Number.isFinite(bike.x)&&Number.isFinite(bike.y));
+ drawCar(ctx,bike,0,1);
+ console.log('B26-T8 The motorcycle drives under the normal car physics and draws clean: PASS');
+}
+{
+ const fw=createFireworks();
+ for(let i=0;i<600;i++)updateFireworks(fw,seeded,0,1/60);
+ assert.equal(fw.rockets.length,0);assert.equal(fw.bursts,0);assert.equal(fw.sparks.length,0);
+ let launched=null;
+ for(let i=0;i<600&&fw.bursts===0;i++){updateFireworks(fw,seeded,1,1/60);if(!launched&&fw.rockets.length)launched={...fw.rockets[0]};}
+ assert(fw.bursts>=1);assert(launched);assert(Math.abs(launched.y-seeded.spawnPoints.pier.y)<6);assert(Math.abs(launched.x-seeded.spawnPoints.pier.x)<=18);
+ console.log('B26-T9 Fireworks never launch by day and launch from the pier end at night: PASS');
+}
+{
+ const fw=createFireworks();let sawSparks=false;
+ for(let i=0;i<600;i++){updateFireworks(fw,seeded,1,1/60);if(fw.sparks.length>=20)sawSparks=true;}
+ assert(sawSparks);assert(fw.bursts>=1);assert(fw.lastBurst&&Number.isFinite(fw.lastBurst.x)&&Number.isFinite(fw.lastBurst.y));
+ console.log('B26-T10 A rocket burst scatters a full shell of sparks and records the burst point: PASS');
+}
+{
+ location.search='?shot=foot&seed=1';
+ const {game:footDusk}=await import('../src/main.js?scene-foot-b26');
+ let t=0;for(let index=0;index<180;index++){raf(t);t+=1000/60;}
+ assert.equal(footDusk.clockMinutes,1100);assert.equal(weatherAt(footDusk.playSeconds),'rain');
+ assert(footDusk.fireworks);assert(footDusk.fireworks.bursts>=1);
+ assert(footDusk.fireworks.burstPoints.some(p=>Math.abs(p.x-footDusk.player.x)<550&&Math.abs(p.y-footDusk.player.y)<344));
+ location.search='';
+ console.log('B26-T11 Foot scene moves to the 1100 dusk clock and stages a fireworks burst in frame: PASS');
 }

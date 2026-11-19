@@ -15,12 +15,27 @@ export function martShops(world) {
   return [{ x: building.x + building.width / 2, y: road.y, name: 'CORAL MART', building }];
 }
 
+export function dinerShops(world) {
+  const point = world.spawnPoints?.diner;
+  if (!point) return [];
+  const building = world.buildings.find(item => item.landmark && item.short === 'MARLIN DINER') || null;
+  return [{ x: point.x, y: point.y, name: 'MARLIN DINER', building }];
+}
+
 export function robberyPayout(rng) {
   return ROBBERY_MIN + Math.floor(rng() * (ROBBERY_MAX - ROBBERY_MIN + 1));
 }
 
+function freshRobberyState(day, seed) {
+  return { phase: 'idle', progress: 0, clerk: null, noticeAt: -99, lastDay: day, dirty: false, rng: createRandom(seed) };
+}
+
 export function createRobberyState(record = null) {
-  return { phase: 'idle', progress: 0, clerk: null, noticeAt: -99, lastDay: Number.isInteger(record?.robberyDay) ? Math.max(-1, record.robberyDay) : -1, dirty: false, rng: createRandom('coral-bay-mart') };
+  return freshRobberyState(Number.isInteger(record?.robberyDay) ? Math.max(-1, record.robberyDay) : -1, 'coral-bay-mart');
+}
+
+export function createDinerRobberyState(record = null) {
+  return freshRobberyState(Number.isInteger(record?.dinerRobberyDay) ? Math.max(-1, record.dinerRobberyDay) : -1, 'coral-bay-diner');
 }
 
 function nearestClerk(people, shop) {
@@ -50,9 +65,9 @@ function completeRobbery(state, g, report, shop, day) {
   state.lastDay = day; state.dirty = true;
 }
 
-export function updateRobbery(state, g, people, report, dt) {
+function updateRobberyAt(state, g, people, report, dt, shops) {
   if (!state || !g?.player || !g.world) return;
-  const shop = martShops(g.world)[0];
+  const shop = shops(g.world)[0];
   if (!shop) return;
   const day = Math.floor((g.clockMinutes ?? 0) / 1440);
   const inside = !g.vehicle && Math.hypot(g.player.x - shop.x, g.player.y - shop.y) < ROBBERY_RADIUS;
@@ -80,9 +95,17 @@ export function updateRobbery(state, g, people, report, dt) {
   }
 }
 
-export function drawRobberyWorld(ctx, state, g, time) {
+export function updateRobbery(state, g, people, report, dt) {
+  updateRobberyAt(state, g, people, report, dt, martShops);
+}
+
+export function updateDinerRobbery(state, g, people, report, dt) {
+  updateRobberyAt(state, g, people, report, dt, dinerShops);
+}
+
+function drawRobberyWorldAt(ctx, state, g, time, shops, label) {
   if (!state || !g?.world) return;
-  const shop = martShops(g.world)[0];
+  const shop = shops(g.world)[0];
   if (!shop) return;
   const pulse = 1 + Math.sin(time * .005) * .12;
   ctx.save(); ctx.textAlign = 'center';
@@ -90,7 +113,7 @@ export function drawRobberyWorld(ctx, state, g, time) {
   ctx.beginPath(); ctx.ellipse(shop.x, shop.y + 4, 30 * pulse, 14 * pulse, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#8c352c'; ctx.fillRect(shop.x - 46, shop.y - 24, 92, 7);
   ctx.font = `bold 12px ${FONT}`; ctx.strokeStyle = '#173d46'; ctx.lineWidth = 4; ctx.fillStyle = '#fff3dc';
-  ctx.strokeText('CORAL MART', shop.x, shop.y - 34); ctx.fillText('CORAL MART', shop.x, shop.y - 34);
+  ctx.strokeText(label, shop.x, shop.y - 34); ctx.fillText(label, shop.x, shop.y - 34);
   if (state.phase === 'holdup') {
     const w = 120, x = shop.x - w / 2, y = shop.y - 78;
     ctx.fillStyle = '#103c48e8'; ctx.beginPath(); ctx.roundRect(x - 8, y - 16, w + 16, 40, 6); ctx.fill();
@@ -100,4 +123,12 @@ export function drawRobberyWorld(ctx, state, g, time) {
     ctx.fillStyle = '#ef826c'; ctx.fillRect(x, y + 6, w * Math.min(1, state.progress / ROBBERY_TIME), 8);
   }
   ctx.restore();
+}
+
+export function drawRobberyWorld(ctx, state, g, time) {
+  drawRobberyWorldAt(ctx, state, g, time, martShops, 'CORAL MART');
+}
+
+export function drawDinerRobberyWorld(ctx, state, g, time) {
+  drawRobberyWorldAt(ctx, state, g, time, dinerShops, 'MARLIN DINER');
 }

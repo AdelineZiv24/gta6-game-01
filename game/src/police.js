@@ -116,7 +116,11 @@ export function updatePolice(police,game,world,camera,dt,fire){
 }
 export function drawOfficers(ctx,police){for(const u of police.units){if(!u.onFoot)continue;ctx.save();ctx.translate(u.x,u.y);ctx.rotate(u.facing||0);ctx.fillStyle=u.health>0?'#214c87':'#62646a';ctx.fillRect(-8,-10,16,20);ctx.fillStyle='#dfb18b';ctx.beginPath();ctx.arc(4,0,6,0,7);ctx.fill();ctx.fillStyle='#f9d777';ctx.fillRect(-2,-7,4,4);ctx.fillStyle='#192e40';ctx.fillRect(8,4,13,4);ctx.restore();}}
 
-export function drawHeliLight(ctx,police){
+export function heliSpotAlpha(night){
+  return Math.max(0,Math.min(1,night));
+}
+
+export function drawHeliLight(ctx,police,night=1){
   const heli=police.heli;
   if(!heli)return;
   const {x,y,lightX=x,lightY=y}=heli;
@@ -125,12 +129,16 @@ export function drawHeliLight(ctx,police){
   ctx.save();
   ctx.fillStyle='rgba(10,25,30,0.25)';
   ctx.beginPath();ctx.ellipse(x+26,y+34,30,12,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='rgba(255,244,190,0.05)';
-  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(lightX+edgeX,lightY+edgeY);ctx.lineTo(lightX-edgeX,lightY-edgeY);ctx.closePath();ctx.fill();
-  ctx.fillStyle='rgba(255,244,190,0.16)';
-  ctx.beginPath();ctx.ellipse(lightX,lightY,88,70,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='rgba(255,244,190,0.10)';
-  ctx.beginPath();ctx.ellipse(lightX,lightY,44,35,0,0,Math.PI*2);ctx.fill();
+  const spot=heliSpotAlpha(night);
+  if(spot>0){
+    ctx.fillStyle='#fff4be';
+    ctx.globalAlpha=0.22*spot;
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(lightX+edgeX,lightY+edgeY);ctx.lineTo(lightX-edgeX,lightY-edgeY);ctx.closePath();ctx.fill();
+    ctx.globalAlpha=0.30*spot;
+    ctx.beginPath();ctx.ellipse(lightX,lightY,88,70,0,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=0.20*spot;
+    ctx.beginPath();ctx.ellipse(lightX,lightY,44,35,0,0,Math.PI*2);ctx.fill();
+  }
   ctx.restore();
 }
 

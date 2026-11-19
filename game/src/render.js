@@ -20,6 +20,14 @@ export function createCamera(x = WORLD.width / 2, y = WORLD.height / 2, width = 
   return camera;
 }
 
+export function signHaloAlpha(night) {
+  return Math.max(0, Math.min(1, night)) * 0.4;
+}
+
+export function lampPoolAlpha(night) {
+  return Math.max(0, Math.min(1, night)) * 0.16;
+}
+
 function roundedRect(context, x, y, width, height, radius) {
   context.beginPath();
   context.roundRect(x, y, width, height, radius);
@@ -93,6 +101,7 @@ function drawRoads(context, world, view) {
 
 function drawBuilding(context, building, night = 0) {
   const { x, y, width, height } = building;
+  const halo = signHaloAlpha(night);
   context.fillStyle = PALETTE.shadow;
   roundedRect(context, x + 8, y + 12, width, height, 5);
   context.fillStyle = building.facade;
@@ -105,6 +114,11 @@ function drawBuilding(context, building, night = 0) {
     const awningY = y + height - 30;
     context.fillStyle = '#fff2d5'; context.fillRect(x + 12, awningY - 4, width - 24, 5);
     context.fillStyle = building.storefront.color; context.fillRect(x + 12, awningY, width - 24, 10);
+    if (halo > 0) {
+      context.save(); context.globalAlpha = halo; context.fillStyle = building.storefront.color;
+      roundedRect(context, x + width * .28 - 6, y + height - 23, width * .44 + 12, 29, 9);
+      context.restore();
+    }
     context.fillStyle = '#fff8df'; context.fillRect(x + width * .28, y + height - 17, width * .44, 17);
     context.fillStyle = building.storefront.color; context.font = `bold 8px ${FONT}`; context.textAlign = 'center'; context.textBaseline = 'middle';
     context.fillText(building.storefront.sign, x + width / 2, y + height - 12, width * .42);
@@ -146,6 +160,11 @@ function drawBuilding(context, building, night = 0) {
     }
   }
   if (building.landmark) {
+    if (halo > 0) {
+      context.save(); context.globalAlpha = halo; context.fillStyle = building.facade;
+      roundedRect(context, x + width / 2 - 50, y - 18, 100, 32, 8);
+      context.restore();
+    }
     context.fillStyle = '#fff8df'; roundedRect(context, x + width / 2 - 44, y - 12, 88, 20, 3);
     context.fillStyle = '#384d4e'; context.font = `bold 9px ${FONT}`; context.textAlign = 'center'; context.textBaseline = 'middle';
     context.fillText(building.short, x + width / 2, y - 2);
@@ -159,6 +178,12 @@ function drawProp(context, prop, night = 0) {
     context.strokeStyle = PALETTE.palm; context.lineWidth = 5;
     for (let index = 0; index < 7; index += 1) { const angle = index * Math.PI * 2 / 7; context.beginPath(); context.moveTo(0, -21); context.quadraticCurveTo(Math.cos(angle) * 22, -29 + Math.sin(angle) * 12, Math.cos(angle) * 35, -18 + Math.sin(angle) * 22); context.stroke(); }
   } else if (prop.kind === 'lamp') {
+    const pool = lampPoolAlpha(night);
+    if (pool > 0) {
+      context.save(); context.globalAlpha = pool; context.fillStyle = '#ffd98c';
+      context.beginPath(); context.ellipse(9, 4, 30, 19, 0, 0, Math.PI * 2); context.fill();
+      context.restore();
+    }
     context.strokeStyle = PALETTE.lamp; context.lineWidth = 4; context.beginPath(); context.moveTo(0, 10); context.lineTo(0, -18); context.lineTo(9, -24); context.stroke();
     context.fillStyle = night > 0.15 ? '#ffe6a0' : '#fff2bb';
     if (night > 0.15) { context.shadowColor = '#ffd970'; context.shadowBlur = 18; }

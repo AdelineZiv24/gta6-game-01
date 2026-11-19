@@ -3,7 +3,7 @@ import { createRandom, angleDifference } from './random.js';
 const random=createRandom('bay-traffic');
 // Cardinal directions clockwise in screen coordinates; right-hand lanes are +20 normal.
 const DX=[1,0,-1,0],DY=[0,1,0,-1];
-const MODEL_ROLL=[0,1,2,3,4,5,0,1,6,7];
+const MODEL_ROLL=[0,1,2,3,4,5,0,1,6,7,9];
 function target(car,world) {
   const a=car.route,d=a.direction;
   car.tx=world.roads.vertical[a.col].x-DY[d]*20;car.ty=world.roads.horizontal[a.row].y+DX[d]*20;

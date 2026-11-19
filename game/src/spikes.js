@@ -32,14 +32,19 @@ export function drawSpikes(ctx, police, time) {
   ctx.translate(strip.x, strip.y);
   ctx.rotate(Math.atan2(strip.dirY, strip.dirX));
   ctx.fillStyle = '#20262b';
-  ctx.fillRect(-4, -strip.half, 8, strip.half * 2);
+  ctx.fillRect(-8, -strip.half, 16, strip.half * 2);
   ctx.fillStyle = '#39434b';
-  ctx.fillRect(-4, -strip.half, 3, strip.half * 2);
+  ctx.fillRect(-8, -strip.half, 6, strip.half * 2);
   const glint = Math.floor(time / 300) % 2;
   for (let i = 0; i < 9; i++) {
     const y = -strip.half + 4 + i * (strip.half * 2 - 8) / 8;
-    ctx.fillStyle = (i + glint) % 2 ? '#c8d4d8' : '#7e8f96';
-    ctx.beginPath(); ctx.arc(0, y, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = (i + glint) % 2 ? '#eef6f8' : '#aebfc4';
+    ctx.beginPath(); ctx.arc(0, y, 2.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = '#ffd37b'; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 9; i++) {
+    const y = -strip.half + 4 + i * (strip.half * 2 - 8) / 8;
+    ctx.beginPath(); ctx.moveTo(-5, y - 3); ctx.lineTo(1, y); ctx.lineTo(-5, y + 3); ctx.stroke();
   }
   ctx.restore();
 }

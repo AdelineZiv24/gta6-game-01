@@ -17,7 +17,7 @@ import {createRep} from '../src/rep.js';
 import {responseRows} from '../src/hud.js';
 import {setWanted,updateEscape,updateWanted} from '../src/wanted.js';
 import {createSprayState,sprayGarages,updateSpray} from '../src/spray.js';
-import {createRobberyState,updateRobbery,martShops,robberyPayout,ROBBERY_TIME} from '../src/robbery.js';
+import {createRobberyState,updateRobbery,martShops,robberyPayout,ROBBERY_TIME,createDinerRobberyState,updateDinerRobbery,dinerShops} from '../src/robbery.js';
 const data=new Map();let writes=0;
 globalThis.localStorage={getItem:k=>data.get(k)||null,setItem(k,v){writes++;data.set(k,v);}};
 const world=createWorld();let key=null;
@@ -164,7 +164,7 @@ console.log('REP gains from deposits, collectibles and taxi fares: PASS');
 }
 console.log('Save round trip with REP, finale indices, legacy default: PASS');
 {
- assert.equal(MODELS.length,9);
+ assert.equal(MODELS.length,10);
  const truck=createCar(200,200,0,6,'#777','player-driven');assert.equal(truck.model.name,'Dockhand Flatbed');
  const roadster=createCar(200,260,0,7,'#777','player-driven');assert.equal(roadster.model.name,'Marlin Roadster');
  assert(MODELS.every(m=>m.topSpeed<=375));assert.equal(Math.max(...MODELS.map(m=>m.topSpeed)),375);
@@ -356,4 +356,186 @@ function robComplete(g){robStep(g);for(let i=0;i<40&&g.robbery.phase==='holdup';
  updateWanted(g.wanted,world,g.player,g.crimes,[clerk],[],10,.1);
  assert.equal(g.wanted.stars,2);
  console.log('B22-T9 A witnessed robbery raises exactly two stars through the unmodified wanted math: PASS');
+}
+
+function dinerFixture(record){
+ const g=fixture(record);g.dinerRobbery=createDinerRobberyState(record);
+ const shop=dinerShops(world)[0];
+ const clerk={x:shop.x+20,y:shop.y,state:'walk',pause:0,panic:0};
+ g.people=[clerk];g.crimes=[];
+ g.report=(type,x,y,severity,violent)=>{const crime={id:g.crimes.length+1,type,x,y,severity,violent};g.crimes.push(crime);return crime;};
+ at(g,shop);return {g,shop,clerk};
+}
+function dinerStep(g,dt=.1){g.playSeconds+=dt;updateDinerRobbery(g.dinerRobbery,g,g.people,g.report,dt);}
+function dinerComplete(g){dinerStep(g);for(let i=0;i<40&&g.dinerRobbery.phase==='holdup';i++)dinerStep(g);assert.equal(g.dinerRobbery.phase,'idle');}
+
+{
+ const shops=dinerShops(world);assert.equal(shops.length,1);
+ assert.equal(shops[0].x,world.spawnPoints.diner.x);assert.equal(shops[0].y,world.spawnPoints.diner.y);
+ assert.equal(shops[0].building.short,'MARLIN DINER');
+ assert.notEqual(shops[0].x,martShops(world)[0].x);
+ console.log('B24-T5 The diner robbery zone sits on the Marlin Diner front point, distinct from the mart: PASS');
+}
+{
+ const {g,clerk}=dinerFixture();g.grantPistol(48);assert.equal(g.combat.weapon,'pistol');
+ const cashBefore=g.player.cash,earnedBefore=g.missions.totalEarned;
+ dinerStep(g);assert.equal(g.dinerRobbery.phase,'holdup');assert.equal(g.notice,'HOLD UP…');assert(clerk.pause>0);
+ for(let i=0;i<20;i++)dinerStep(g);assert.equal(g.dinerRobbery.phase,'holdup');assert.equal(g.player.cash,cashBefore);
+ dinerComplete(g);
+ const pay=g.player.cash-cashBefore;assert(pay>=180&&pay<=320);assert.equal(g.missions.totalEarned,earnedBefore+pay);
+ assert.equal(g.crimes.length,1);assert.equal(g.crimes[0].type,'robbery');assert.equal(g.crimes[0].violent,true);assert.equal(g.crimes[0].severity,3);
+ assert(g.popups.list.some(entry=>entry.life>0&&entry.text===`ROBBERY +$${pay}`));
+ assert.equal(clerk.panic,6);assert.equal(g.dinerRobbery.lastDay,0);assert.equal(g.dinerRobbery.dirty,true);
+ console.log('B24-T6 Diner hold-up completes after 3 s with pistol out, pays the till range, reports a violent robbery: PASS');
+}
+{
+ const leave=dinerFixture();leave.g.grantPistol(48);dinerStep(leave.g);assert.equal(leave.g.dinerRobbery.phase,'holdup');
+ at(leave.g,{x:leave.shop.x+500,y:leave.shop.y});dinerStep(leave.g);
+ assert.equal(leave.g.dinerRobbery.phase,'idle');assert.equal(leave.g.crimes.length,0);assert.equal(leave.g.player.cash,180);
+ const fists=dinerFixture();fists.g.grantPistol(48);dinerStep(fists.g);fists.g.combat.weapon='fists';dinerStep(fists.g);
+ assert.equal(fists.g.dinerRobbery.phase,'idle');assert.equal(fists.g.crimes.length,0);assert.equal(fists.g.player.cash,180);
+ const busted=dinerFixture();busted.g.grantPistol(48);dinerStep(busted.g);busted.g.outcome={kind:'busted',bill:0};dinerStep(busted.g);
+ assert.equal(busted.g.dinerRobbery.phase,'idle');assert.equal(busted.g.crimes.length,0);assert.equal(busted.g.player.cash,180);
+ console.log('B24-T7 Leaving the diner zone, holstering to fists, or an outcome mid-hold-up aborts with no payout and no crime: PASS');
+}
+{
+ const run=dinerFixture();run.g.grantPistol(48);dinerComplete(run.g);
+ writeSave(run.g,run.g.missions);const saved=loadSave();assert.equal(saved.dinerRobberyDay,0);assert.equal(saved.robberyDay,-1);
+ const restored=dinerFixture(saved);assert.equal(restored.g.dinerRobbery.lastDay,0);restored.g.grantPistol(48);
+ const cash=restored.g.player.cash;dinerStep(restored.g);
+ assert.equal(restored.g.dinerRobbery.phase,'idle');assert.equal(restored.g.notice,'TILL EMPTY · COME BACK TOMORROW');assert.equal(restored.g.player.cash,cash);assert.equal(restored.g.crimes.length,0);
+ restored.g.clockMinutes=1440+555;dinerStep(restored.g);assert.equal(restored.g.dinerRobbery.phase,'holdup');
+ assert.equal(SAVE_VERSION,1);
+ data.set('coral-bay-heat-save',JSON.stringify({version:1,cash:50,completed:[0,1],currentMission:2}));
+ const legacy=loadSave();assert.equal(legacy.dinerRobberyDay,-1);assert.equal(createDinerRobberyState(legacy).lastDay,-1);
+ console.log('B24-T8 One diner robbery per in-game day persists as dinerRobberyDay; legacy saves default to a full till: PASS');
+}
+{
+ const {g}=dinerFixture();g.robbery=createRobberyState();g.grantPistol(48);
+ dinerComplete(g);assert.equal(g.dinerRobbery.lastDay,0);assert.equal(g.robbery.lastDay,-1);assert.equal(g.crimes.length,1);
+ const mart=martShops(world)[0];const martClerk={x:mart.x+20,y:mart.y,state:'walk',pause:0,panic:0};g.people=[martClerk];
+ at(g,mart);robStep(g);assert.equal(g.robbery.phase,'holdup');
+ robComplete(g);assert.equal(g.robbery.lastDay,0);assert.equal(g.dinerRobbery.lastDay,0);assert.equal(g.crimes.length,2);
+ console.log('B24-T9 Mart and diner tills are independent: robbing one leaves the other open the same day: PASS');
+}
+{
+ const {g,clerk}=dinerFixture();g.grantPistol(48);dinerComplete(g);
+ assert.equal(g.crimes.length,1);
+ updateWanted(g.wanted,world,g.player,g.crimes,[clerk],[],10,.1);
+ assert.equal(g.wanted.stars,2);
+ console.log('B24-T10 A witnessed diner robbery raises exactly two stars through the unmodified wanted math: PASS');
+}
+const {createGlow,updateGlow,glowAlpha,GLOW_COLORS,GLOW_INSTALL,GLOW_CYCLE}=await import('../src/glow.js');
+function glowFixture(record){
+ const g=fixture(record);g.glow=createGlow(record);
+ const garage=sprayGarages(world)[0];
+ at(g,garage,true);g.vehicle.speed=0;g.vehicle.health=100;g.player.cash=1000;
+ return {g,garage};
+}
+function glowStep(g,dt=.1){g.playSeconds+=dt;updateSpray(g,dt);updateGlow(g.glow,g,dt);}
+{
+ const {g}=glowFixture();
+ for(let i=0;i<9;i++)glowStep(g);
+ assert.equal(g.glow.color,0);assert.equal(g.player.cash,1000-GLOW_INSTALL);assert.equal(g.glow.dirty,true);
+ writeSave(g,g.missions);const saved=loadSave();assert.equal(saved.glow,0);assert.equal(createGlow(saved).color,0);
+ assert.equal(SAVE_VERSION,1);
+ data.set('coral-bay-heat-save',JSON.stringify({version:1,cash:50,completed:[0,1],currentMission:2}));
+ assert.equal(loadSave().glow,-1);assert.equal(createGlow(loadSave()).color,-1);
+ console.log('B23-T1 Underglow purchase charges $200, persists in the save, legacy saves default off: PASS');
+}
+{
+ const {g,garage}=glowFixture();
+ const enter=()=>{at(g,garage,true);g.vehicle.speed=0;for(let i=0;i<9;i++)glowStep(g);};
+ const leave=()=>{at(g,{x:garage.x,y:garage.y+400},true);glowStep(g);};
+ enter();assert.equal(g.glow.color,0);let cash=g.player.cash;
+ leave();enter();assert.equal(g.glow.color,1);assert.equal(g.player.cash,cash-GLOW_CYCLE);cash=g.player.cash;
+ leave();enter();assert.equal(g.glow.color,2);assert.equal(g.player.cash,cash-GLOW_CYCLE);cash=g.player.cash;
+ leave();enter();assert.equal(g.glow.color,-1);assert.equal(g.player.cash,cash-GLOW_CYCLE);cash=g.player.cash;
+ leave();enter();assert.equal(g.glow.color,0);assert.equal(g.player.cash,cash-GLOW_CYCLE);
+ assert.deepEqual(GLOW_COLORS.map(c=>c.name),['CYAN','MAGENTA','LIME']);
+ console.log('B23-T2 Repeat visits cycle cyan, magenta, lime, off, cyan at $50 per change: PASS');
+}
+{
+ const {g}=glowFixture();g.vehicle.health=40;
+ assert.equal(updateGlow(g.glow,g,.1),false);assert.equal(g.glow.color,-1);
+ glowStep(g);
+ assert.equal(g.vehicle.health,100);assert.equal(g.player.cash,1000-150);assert.equal(g.glow.color,-1);
+ const w=glowFixture();setWanted(w.g.wanted,2,w.g.player);
+ assert.equal(updateGlow(w.g.glow,w.g,.1),false);assert.equal(w.g.glow.color,-1);
+ console.log('B23-T3 A damaged or wanted car takes the respray path, never the underglow: PASS');
+}
+{
+ assert.equal(glowAlpha(720),0.18);
+ assert(glowAlpha(1040)>0.5);assert(glowAlpha(1040)>glowAlpha(720));
+ assert(glowAlpha(0)>glowAlpha(1040));
+ console.log('B23-T4 Underglow intensity follows the headlight dusk curve: PASS');
+}
+{
+ assert(glowAlpha(1100)>glowAlpha(1040));assert(glowAlpha(1100)<glowAlpha(0));
+ console.log('B24-T2 The brief-24 dusk cover clock deepens the underglow past the old 1040 staging: PASS');
+}
+{
+ const {g,garage}=glowFixture();
+ const enter=()=>{at(g,garage,true);g.vehicle.speed=0;for(let i=0;i<9;i++)glowStep(g);};
+ const leave=()=>{at(g,{x:garage.x,y:garage.y+400},true);glowStep(g);};
+ enter();leave();enter();leave();enter();leave();enter();
+ assert.equal(g.glow.color,-1);assert.equal(g.glow.installed,true);
+ writeSave(g,g.missions);const saved=loadSave();
+ assert.equal(saved.glow,-1);assert.equal(saved.glowInstalled,true);
+ const restored=glowFixture(saved);
+ assert.equal(restored.g.glow.installed,true);assert.equal(restored.g.glow.color,-1);
+ at(restored.g,garage,true);restored.g.vehicle.speed=0;
+ for(let i=0;i<9;i++)glowStep(restored.g);
+ assert.equal(restored.g.glow.color,0);assert.equal(restored.g.player.cash,1000-GLOW_CYCLE);
+ console.log('B23-T1b The installed flag persists: cycling back on after a reload costs $50, not $200: PASS');
+}
+
+const {createAlarmState,maybeAlarm,updateAlarms,ALARM_TIME,ALARM_RANGE}=await import('../src/alarms.js');
+function alarmFixture(){
+ const g=fixture();g.alarms=createAlarmState();g.crimes=[];
+ g.report=(type,x,y,severity,violent)=>{const crime={type,x,y,severity,violent};g.crimes.push(crime);return crime;};
+ return g;
+}
+function alarmCar(x=1000,y=1000,driver='parked'){return createCar(x,y,0,1,'#777',driver);}
+{
+ const g=alarmFixture();g.alarms.rng=()=>0.1;
+ const car=alarmCar();assert.equal(maybeAlarm(g.alarms,car,g),true);
+ assert.equal(car.alarmT,ALARM_TIME);assert.equal(g.alarms.active.length,1);
+ assert(g.popups.list.some(e=>e.life>0&&e.text==='ALARM'));
+ const quiet=alarmFixture();quiet.alarms.rng=()=>0.9;
+ assert.equal(maybeAlarm(quiet.alarms,alarmCar(),quiet),false);assert.equal(quiet.alarms.active.length,0);
+ const gx=alarmFixture();gx.alarms.rng=()=>0;
+ assert.equal(maybeAlarm(gx.alarms,alarmCar(1000,1000,'traffic-driven'),gx),false);
+ const cop=alarmCar();cop.police=true;assert.equal(maybeAlarm(gx.alarms,cop,gx),false);
+ const busCar=alarmCar();busCar.bus=true;assert.equal(maybeAlarm(gx.alarms,busCar,gx),false);
+ const rival=alarmCar();gx.missions.rival=rival;assert.equal(maybeAlarm(gx.alarms,rival,gx),false);
+ const raceRival=alarmCar();gx.race.rival=raceRival;assert.equal(maybeAlarm(gx.alarms,raceRival,gx),false);
+ const gd=alarmFixture();let hits=0;
+ for(let i=0;i<200;i++){if(maybeAlarm(gd.alarms,alarmCar(500+i,500),gd))hits++;}
+ assert(hits>=55&&hits<=95);
+ console.log('B23-T6 Alarm fires on the seeded ~35% of parked entries and never for traffic, police, bus or rival cars: PASS');
+}
+{
+ const g=alarmFixture();g.alarms.rng=()=>0.1;
+ const car=alarmCar(2000,2000);g.vehicle=car;Object.assign(g.player,{x:2000,y:2000});
+ assert.equal(maybeAlarm(g.alarms,car,g),true);
+ for(let i=0;i<45;i++)updateAlarms(g.alarms,g,g.report,.1);
+ assert.equal(g.crimes.length,1);assert.equal(g.crimes[0].type,'vehicle_theft');assert.equal(g.crimes[0].severity,1);assert.equal(g.crimes[0].violent,false);
+ assert.equal(car.alarmT,0);assert.equal(car.alarmDone,true);
+ const far=alarmFixture();far.alarms.rng=()=>0.1;
+ const car2=alarmCar(2000,2000);far.vehicle=car2;Object.assign(far.player,{x:2000,y:2000});
+ assert.equal(maybeAlarm(far.alarms,car2,far),true);
+ car2.x+=ALARM_RANGE+80;far.player.x=car2.x;
+ for(let i=0;i<45;i++)updateAlarms(far.alarms,far,far.report,.1);
+ assert.equal(far.crimes.length,0);assert.equal(car2.alarmDone,true);
+ console.log('B23-T7 Alarm reports the theft only when the car is still near the scene after 4 s: PASS');
+}
+{
+ const g=alarmFixture();g.alarms.rng=()=>0.1;
+ const car=alarmCar(2000,2000);g.vehicle=car;Object.assign(g.player,{x:2000,y:2000});
+ assert.equal(maybeAlarm(g.alarms,car,g),true);
+ for(let i=0;i<45;i++)updateAlarms(g.alarms,g,g.report,.1);
+ g.alarms.rng=()=>0;
+ assert.equal(maybeAlarm(g.alarms,car,g),false);
+ console.log('B23-T8 A resolved alarm never re-triggers on the same car: PASS');
 }

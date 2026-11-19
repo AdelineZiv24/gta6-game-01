@@ -77,10 +77,12 @@ export function createAudio() {
     if (name === 'cash') { tone(660, 0.15, 'sine', 0.08, 880); tone(990, 0.22, 'sine', 0.06, 1320); }
     if (name === 'dialogue') tone(520, 0.04, 'sine', 0.025, 590);
     if (name === 'collision') { tone(100, 0.22, 'triangle', 0.14 * amount, 34); noise(0.18, 0.14 * amount, 1100); }
+    if (name === 'explosion') { noise(0.5, 0.22 * amount, 900); tone(64, 0.5, 'triangle', 0.16 * amount, 30); }
     if (name === 'busted') { tone(440, 0.35, 'triangle', 0.09, 180); tone(220, 0.58, 'sine', 0.07, 80); }
     if (name === 'hospital') { tone(520, 0.24, 'sine', 0.07, 620); tone(780, 0.4, 'sine', 0.06, 980); }
     if (name === 'skid') noise(0.11, 0.06 * amount, 1900);
     if (name === 'horn') { tone(370, 0.22, 'square', 0.05); tone(466, 0.22, 'square', 0.04); }
+    if (name === 'alarm') { tone(920, 0.09, 'square', 0.045); tone(698, 0.14, 'square', 0.035, 622); }
   }
 
   function musicTick() {

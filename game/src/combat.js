@@ -4,6 +4,21 @@ export function createCombat(){return {weapon:'fists',pistol:false,ammo:0,reserv
 export function grantPistol(game,rounds=48){const c=game.combat;if(!c.pistol){c.pistol=true;c.ammo=Math.min(12,rounds);rounds-=c.ammo;}c.reserve+=Math.max(0,rounds);c.weapon='pistol';}
 export function damagePlayer(game,amount){if(game.state!=='playing'||amount<=0)return;const p=game.player,c=game.combat;const absorbed=Math.min(p.armour,amount*.65);p.armour-=absorbed;p.health=Math.max(0,p.health-(amount-absorbed));c.lastDamage=game.playSeconds;c.flash=.25;c.shake=Math.min(7,amount*.3);}
 function effect(c,item){if(c.effects.length>=100)c.effects.shift();c.effects.push(item);}
+function angleDifference(a,b){let d=(a-b)%(Math.PI*2);if(d>Math.PI)d-=Math.PI*2;if(d<-Math.PI)d+=Math.PI*2;return d;}
+// Drive-by: one pistol shot out of the driver's window of the car Dario is driving.
+// It reuses the ordinary hitscan, so its crime reports match on-foot pistol fire.
+export function fireDriveBy(game,world,cars,people,report){
+  const c=game.combat,v=game.vehicle;
+  if(!v||c.weapon!=='pistol'||c.ammo<=0)return false;
+  c.ammo--;c.cooldown=.22;c.lastAction=game.playSeconds;
+  const side=v.heading-Math.PI/2,sx=Math.cos(side),sy=Math.sin(side);
+  const origin={x:v.x+Math.cos(v.heading)*8+sx*16,y:v.y+Math.sin(v.heading)*8+sy*16};
+  let aim=side,best=600;
+  const spots=[...game.police.units.filter(u=>u.health>0&&u.onFoot),...people.filter(p=>p.state!=='down'),...cars.filter(car=>car!==v)];
+  for(const t of spots){const dx=t.x-origin.x,dy=t.y-origin.y,d=Math.hypot(dx,dy);if(d>8&&d<best&&Math.abs(angleDifference(Math.atan2(dy,dx),side))<1.05){best=d;aim=Math.atan2(dy,dx);}}
+  shoot(game,world,origin,aim,cars,people,game.police.units,report);
+  return true;
+}
 function shoot(game,world,origin,angle,cars,people,units,report,policeShot=false){
   game.audio?.effect('gun');
   const c=game.combat,max=600,dx=Math.cos(angle),dy=Math.sin(angle);
@@ -13,12 +28,14 @@ function shoot(game,world,origin,angle,cars,people,units,report,policeShot=false
   const targets=policeShot?[{actor:game.vehicle||game.player,r:game.vehicle?25:12,kind:'player'}]:[
     ...units.filter(u=>u.health>0&&u.onFoot).map(u=>({actor:u,r:12,kind:'officer'})),
     ...people.filter(p=>p.state!=='down').map(p=>({actor:p,r:10,kind:'person'})),
-    ...cars.map(car=>({actor:car,r:car.model.length*.43,kind:'car'}))];
+    ...cars.map(car=>({actor:car,r:car.model.length*.43,kind:'car'})),
+    ...(game.barrels?.list||[]).filter(b=>b.state==='idle').map(b=>({actor:b,r:10,kind:'barrel'}))];
   let hit=null;
   for(const t of targets){const x=t.actor.x-origin.x,y=t.actor.y-origin.y,along=x*dx+y*dy,side=Math.abs(x*dy-y*dx);if(along>8&&side<t.r){const near=along-Math.sqrt(t.r*t.r-side*side);if(near<end){end=Math.max(0,near);hit=t;}}}
   if(hit){const a=hit.actor;
     if(hit.kind==='player'){if(game.vehicle)game.vehicle.health=Math.max(0,game.vehicle.health-9);damagePlayer(game,game.vehicle?6:14);}
     else if(hit.kind==='person'){a.state='down';report('pedestrian_hit',a.x,a.y,3,true);}
+    else if(hit.kind==='barrel'){a.state='lit';a.timer=.12;}
     else {a.health=Math.max(0,a.health-(hit.kind==='car'?18:40));if(hit.kind==='officer'||a.police){const crime=report('police_hit',a.x,a.y,4,true);crime.againstPolice=true;for(const u of units)u.hostile=true;}}
   }
   const x=origin.x+dx*end,y=origin.y+dy*end;
@@ -48,6 +65,13 @@ export function updateCombat(game,world,input,camera,cars,people,report,dt){
       for(const a of targets){const d=Math.hypot(a.x-p.x,a.y-p.y),angle=Math.atan2(a.y-p.y,a.x-p.x)-p.facing;if(d<53&&Math.cos(angle)>.45&&hasSight(world,p,a,53)){if('car' in a){a.health=Math.max(0,a.health-34);a.hostile=true;const crime=report('police_hit',a.x,a.y,3,true);crime.againstPolice=true;}else a.state='down';effect(c,{kind:'spark',x:a.x,y:a.y,life:.2,max:.2});}}
     }else if(trigger&&!c.trigger&&c.weapon==='pistol'&&!c.reload&&c.cooldown===0){
       if(c.ammo>0){c.ammo--;c.cooldown=.22;c.lastAction=game.playSeconds;shoot(game,world,p,p.facing+(Math.random()-.5)*.055,cars,people,game.police.units,report);}
+      else if(c.reserve)c.reload=1.3;
+      else game.audio?.effect('empty');
+    }
+  }
+  else if(game.vehicle){
+    if(input.wasPressed('KeyF')&&c.weapon==='pistol'&&!c.reload&&c.cooldown===0){
+      if(c.ammo>0)fireDriveBy(game,world,cars,people,report);
       else if(c.reserve)c.reload=1.3;
       else game.audio?.effect('empty');
     }
