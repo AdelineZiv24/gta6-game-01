@@ -1,5 +1,7 @@
 import { CITY, PALETTE, WORLD } from './config.js';
 import { createRandom, pick, randomInt, randomRange } from './random.js';
+import { createBillboards } from './billboards.js';
+import { createStorefronts } from './storefronts.js';
 
 const LANDMARKS = [
   { id: 'hospital', name: 'Coral Bay General', short: 'CB GENERAL', gx: 1, gy: 1, color: PALETTE.hospital, w: 170, h: 130 },
@@ -179,7 +181,9 @@ export function createWorld(seed = WORLD.seed) {
     if (distance < martDistance) { martDistance = distance; martBuilding = building; }
   }
   if (martBuilding) { martBuilding.storefront.sign = 'CORAL MART'; martBuilding.storefront.color = '#c94f43'; }
-  return { seed, buildings, props, sidewalks, roads, parkingSpots, lots, boats, spawnPoints, beach, water, pier, pointInWater, collidesCircle };
+  const billboards = createBillboards({ buildings, roads, spawnPoints, props });
+  const storefronts = createStorefronts({ buildings, roads });
+  return { seed, buildings, props, sidewalks, roads, parkingSpots, lots, boats, spawnPoints, beach, water, pier, pointInWater, collidesCircle, billboards, storefronts };
 }
 
 export const worldGeometry = { intersects, pointInRect };

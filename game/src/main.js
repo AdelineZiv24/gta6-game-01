@@ -1,5 +1,23 @@
-import { createWanted, updateWanted, clearWanted, setWanted, createEscape, updateEscape } from './wanted.js';
+// CORAL BAY HEAT — the game's entry module: it wires every system in
+// game/src into one living city. A six-mission story (missions.js); wanted
+// 0-5 stars with patrols, a helicopter, roadblocks and spike strips
+// (wanted.js, police.js, spikes.js); signalised traffic that stops at red
+// and reports red-light offences (traffic.js, lights.js); crowds that flee,
+// scatter and duck (pedestrians.js); taxi fares, street races, rampages,
+// courier runs, fishing, 12 collectible umbrellas and five photo spots;
+// shop robberies, fuel, a respray garage with neon underglow, car alarms,
+// drift chains and STREET REP; weather and a day/night sky; Coral Bay
+// Radio on three stations; the BREAKING news banner; animated billboards
+// and storefronts; collision damage that smokes, then burns; and the live
+// minimap. Staging for the four screenshot scenes also lives here.
+import { createTraffic, updateTraffic } from './traffic.js';
+import { createRadio, cycleRadio } from './radio.js';
+import { createDamageSmoke, updateDamageSmoke, drawDamageSmoke } from './damage.js';
+import { createNews, updateNews, newsCrime } from './news.js';
 import { createPolice, spawnPolice, spawnHeli, updatePolice, placeRoadblock, drawOfficers, drawHeliLight, drawHeli } from './police.js';
+import { drawHUD } from './hud.js';
+import { createMissionState, updateMissions, drawMissionWorld, failMission } from './missions.js';
+import { createWanted, updateWanted, clearWanted, setWanted, createEscape, updateEscape } from './wanted.js';
 import { updateSpikes, drawSpikes } from './spikes.js';
 import { createCombat, grantPistol, updateCombat, policeFire, damagePlayer, drawCombat, fireDriveBy } from './combat.js';
 import { WORLD } from './config.js';
@@ -7,11 +25,8 @@ import { createWorld, updateBoats } from './world.js';
 import { createRenderer, drawMinimapBase } from './render.js';
 import { createInput } from './input.js';
 import { createPlayer, updatePlayer, drawPlayer } from './player.js';
-import { drawHUD } from './hud.js';
 import { createCar, modelByName, setupParkedCars, updateCar, drawCar, headlightLevel, resolveCarContacts, createVehicleEffects, updateVehicleEffects, drawVehicleEffects } from './vehicles.js';
-import { createTraffic, updateTraffic } from './traffic.js';
 import { createPedestrians, updatePedestrians, drawPedestrian, addFleeingPedestrian, startlePedestrians } from './pedestrians.js';
-import { createMissionState, updateMissions, drawMissionWorld, failMission } from './missions.js';
 import { loadSave, writeSave, hasSave } from './save.js';
 import { createAudio } from './audio.js';
 import { createPopups, updatePopups, drawPopups, spawnPopup } from './popups.js';
@@ -25,11 +40,11 @@ import { createDrift, updateDrift } from './drift.js';
 import { createBus, updateBus, stageBusAtShelter } from './bus.js';
 import { updateStunt, drawStuntWorld } from './stunt.js';
 import { createRep, repProgress } from './rep.js';
-import { createRadio, cycleRadio } from './radio.js';
 import { drawPerformer } from './performer.js';
 import { drawGulls } from './gulls.js';
 import { weatherAt, drawRain } from './weather.js';
 import { createFireworks, updateFireworks, drawFireworks, stageFireworksShot } from './fireworks.js';
+import { createRedLightTracker, updateRedLight } from './lights.js';
 import { createPhotos, updatePhotos, drawPhotosWorld } from './photos.js';
 import { createRobberyState, updateRobbery, drawRobberyWorld, createDinerRobberyState, updateDinerRobbery, drawDinerRobberyWorld } from './robbery.js';
 import { createGlow, updateGlow, drawUnderglow } from './glow.js';
@@ -47,6 +62,7 @@ minimap.width = 864; minimap.height = 720; drawMinimapBase(minimap, world);
 const shot = new URLSearchParams(location.search).get('shot');
 const SHOT_CLOCK = 1040;
 const COVER_CLOCK = 1100;
+const CHASE_CLOCK = 1300;
 export const game = {
   shot, state: 'menu', world, player: createPlayer(world.spawnPoints.player), minimap,
   objective: { text: 'Meet Lena Marsh at the Marlin Diner', position: world.spawnPoints.diner },
@@ -60,7 +76,7 @@ export const game = {
   fishing: createFishing(),
   courier: createCourier(),
   drift: createDrift(),
-  photos: createPhotos(), robbery: createRobberyState(), dinerRobbery: createDinerRobberyState(), glow: createGlow(), barrels: createBarrels(world),
+  photos: createPhotos(), robbery: createRobberyState(), dinerRobbery: createDinerRobberyState(), glow: createGlow(), barrels: createBarrels(world), damageSmoke: createDamageSmoke(),
   rep: createRep(),
   radio: createRadio(),
   fireworks: createFireworks(),
@@ -72,10 +88,12 @@ game.wanted=createWanted();game.police=createPolice();game.combat=createCombat()
 game.grantPistol=(rounds)=>grantPistol(game,rounds);
 game.clearWanted=()=>{clearWanted(game.wanted,game.crimeSequence);game.police.arrest=0;};
 game.recentCrimes = []; game.crimeSequence = 0;
+  game.news = createNews();game.redLight=createRedLightTracker();
 export function reportCrime(type, x, y, severity = 1, violent = false) {
   const crime = { id: ++game.crimeSequence, type, x, y, time: game.playSeconds, severity, violent };
   game.recentCrimes.push(crime);
   if (game.recentCrimes.length > 128) game.recentCrimes.shift();
+  newsCrime(game.news, crime, world);
   return crime;
 }
 let parked = setupParkedCars(world), traffic = createTraffic(world,game.player), pedestrians = createPedestrians(world,game.player);
@@ -125,7 +143,7 @@ function interact() {
 function finishOutcome(kind){
   if(game.outcome)return;
   const bill=Math.min(game.player.cash,Math.ceil(game.player.cash*(kind==='busted'?.15:.1))+(kind==='busted'?50:75));
-  game.player.cash-=bill;game.outcome={kind,bill};game.audio?.effect(kind==='busted'?'busted':'hospital');game.entering=null;if(game.missions?.activity==='mission')failMission(game.missions,kind==='busted'?'The police got you. Lena says to come back when you are ready.':'You are in the hospital. The job can wait.');setState(kind);
+  game.player.cash-=bill;game.outcome={kind,bill,stars:game.wanted?.stars??0,cash:game.player.cash,repLevel:repProgress(game.rep?.xp??0).level,jobs:game.missions?.completed?.length??0,missionBlown:game.missions?.activity==='mission'};game.audio?.effect(kind==='busted'?'busted':'hospital');game.entering=null;if(game.missions?.activity==='mission')failMission(game.missions,kind==='busted'?'The police got you. Lena says to come back when you are ready.':'You are in the hospital. The job can wait.');setState(kind);
 }
 function respawn(){
   const spot=world.spawnPoints[game.outcome.kind==='busted'?'police':'hospital'];
@@ -159,7 +177,7 @@ function startGame(foot = false, record=null) {
   if(game.missions.currentMission>=6||game.missions.completed.includes(5))game.missions.objective='Story complete · Free roam in Coral Bay';
   else if(game.missions.currentMission===5)game.missions.objective='Meet Lena at the Marlin Diner · One last job';
   game.objective={text:game.missions.objective,position:game.missions.marker};
-  game.wanted=createWanted();game.escape=createEscape();game.alarms=createAlarmState();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.courier=createCourier(record);game.drift=createDrift();game.photos=createPhotos(record);game.robbery=createRobberyState(record);game.dinerRobbery=createDinerRobberyState(record);game.glow=createGlow(record);game.barrels=createBarrels(world);game.rep=createRep(record);game.radio=createRadio();game.fireworks=createFireworks();game.outcome=null;
+  game.wanted=createWanted();game.escape=createEscape();game.alarms=createAlarmState();game.police=createPolice();game.combat=createCombat();game.vehicleEffects=createVehicleEffects();game.popups=createPopups();game.race=createRace();game.fuel=createFuelState();game.rampage=createRampage();game.fishing=createFishing();game.courier=createCourier(record);game.drift=createDrift();game.photos=createPhotos(record);game.robbery=createRobberyState(record);game.dinerRobbery=createDinerRobberyState(record);game.glow=createGlow(record);game.barrels=createBarrels(world);game.damageSmoke=createDamageSmoke();game.rep=createRep(record);game.radio=createRadio();game.fireworks=createFireworks();game.news=createNews();game.redLight=createRedLightTracker();game.outcome=null;
   game.vehicle=null;game.entering=null;game.interactionRequested=false;game.noticeUntil=0;game.recentCrimes.length=0;
   if(shot==='drive'||shot==='chase'||shot==='cover'){
     const car=createCar(world.roads.vertical[3].x+180,world.roads.horizontal[3].y+20,0,3,'#e17c65','player-driven');
@@ -169,25 +187,49 @@ function startGame(foot = false, record=null) {
   if(record?.currentCar){game.vehicle=createCar(record.currentCar.x,record.currentCar.y,record.currentCar.heading,modelByName(record.currentCar.model),record.currentCar.color,'player-driven');game.vehicle.health=record.currentCar.health;parked.push(game.vehicle);game.player.x=game.vehicle.x;game.player.y=game.vehicle.y;}
   traffic=createTraffic(world,game.player);pedestrians=createPedestrians(world,game.player);
   if(shot==='foot'){
+    game.radio.station=2;
     game.playSeconds=160;
     game.clockMinutes=1100;stageFireworksShot(game.fireworks,game.player);
     const road=world.roads.vertical.reduce((best,item)=>Math.abs(item.x-game.player.x)<Math.abs(best.x-game.player.x)?item:best);
     const taxi=createCar(road.x,game.player.y+170,Math.PI/2,5,undefined,'traffic-driven');taxi.speed=115;traffic.cars.push(taxi);
     pedestrians.people.push(...Array.from({length:5},(_,i)=>{const p={...pedestrians.people[i],x:road.x-58+i*25,y:game.player.y+105,facing:Math.PI/2,state:'walk',pause:0};return p;}));
     stageBusAtShelter(bus, world, game.player);
+    traffic.time=13.5;
+    const queueIntersection={col:4,row:3,x:world.roads.vertical[4].x,y:world.roads.horizontal[3].y};
+    const queueCars=[];
+    [[58,9],[106,2],[154,3]].forEach(([along,model])=>{
+     const car=createCar(queueIntersection.x-20,queueIntersection.y-along,Math.PI/2,model,undefined,'traffic-driven');
+     car.route={col:4,row:3,direction:1};car.tx=queueIntersection.x-20;car.ty=queueIntersection.y;car.speed=20;
+     traffic.cars.push(car);queueCars.push(car);
+    });
+    const crossPeds=[];
+    [[2148,1501,0],[2188,1501,Math.PI]].forEach(([px,py,fx],pi)=>{
+     const p={...pedestrians.people[pi],x:px,y:py,facing:fx,state:'walk',pause:999};
+     pedestrians.people.push(p);crossPeds.push(p);
+    });
+    const waitPed={...pedestrians.people[3],x:2224,y:1518,facing:Math.PI,state:'walk',pause:999};
+    pedestrians.people.push(waitPed);
+    game.footStaging={intersection:queueIntersection,queue:queueCars,crossers:crossPeds,waiter:waitPed};
   }
-  if(shot==='chase'){setWanted(game.wanted,3,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<3;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+[-20,20,-22][i],0,i===2);u.car.speed=180;}game.police.spawnTimer=5;
+  if(shot==='chase'){game.clockMinutes=CHASE_CLOCK;game.radio.station=1;setWanted(game.wanted,5,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;for(let i=0;i<3;i++){const u=spawnPolice(game.police,game.vehicle.x-115-i*105,game.vehicle.y+[-20,20,-22][i],0,i===2);u.car.speed=180;}game.police.spawnTimer=5;
     const road=world.roads.horizontal[3];for(let i=0;i<2;i++){const car=createCar(game.vehicle.x+[430,610][i],road.y+20,0,i+1,undefined,'traffic-driven');car.speed=[125,115][i];traffic.cars.push(car);}
     stageRaceShot(game.race,game);
     grantPistol(game,48);game.stageDriveBy=true;
     const stagedBarrel=game.barrels.list.reduce((a,b)=>Math.hypot(b.x-game.vehicle.x,b.y-game.vehicle.y)<Math.hypot(a.x-game.vehicle.x,a.y-game.vehicle.y)?b:a);
     stagedBarrel.x=game.vehicle.x+150;stagedBarrel.y=game.vehicle.y-40;game.stageBarrel=stagedBarrel;
+    pedestrians.people.push(...Array.from({length:10},(_,index)=>{
+      const source=pedestrians.people[index];
+      const spots=[[-95,-58],[-30,-72],[45,-60],[110,-70],[70,90],[130,85],[-200,92],[-110,98],[110,94],[180,100]];
+      const [ox,oy]=spots[index];
+      return {...source,x:stagedBarrel.x+ox,y:stagedBarrel.y+oy,facing:Math.PI/2,state:'walk',pause:0};
+    }));
   }
   if(shot==='cover'){
     game.clockMinutes=COVER_CLOCK;
+    game.radio.station=1;
     setWanted(game.wanted,5,game.vehicle);game.wanted.seen=true;game.wanted.lastCrime=0;game.vehicle.speed=165;
     for(const [index,offset] of [-100,-170,-240,-310].entries()){
-      const unit=spawnPolice(game.police,game.vehicle.x+offset,game.vehicle.y+[-24,14,-40,22][index],0,index===0);unit.car.speed=180;
+      const unit=spawnPolice(game.police,game.vehicle.x+offset,game.vehicle.y+[-24,14,-40,22][index],0,index===0);unit.car.speed=180;unit.car.health=[48,100,70,100][index];
     }
     const heli=spawnHeli(game.police,game.vehicle.x-150,game.vehicle.y-120);
     heli.lightX=game.vehicle.x;heli.lightY=game.vehicle.y;
@@ -196,9 +238,11 @@ function startGame(foot = false, record=null) {
     game.police.spawnTimer=5;
     placeRoadblock(game.police,world,game.vehicle.x+430,world.roads.horizontal[3].y+20,0,0);
     const road=world.roads.horizontal[3];
+    const coverTraffic=[];
     for(let index=0;index<3;index++){
       const car=createCar(game.vehicle.x+[560,880,1240][index],road.y+[20,-20,20][index],0,index+1,undefined,'traffic-driven');
-      car.speed=[150,138,152][index];traffic.cars.push(car);
+      car.speed=[150,138,152][index];car.health=[10,58,34][index];traffic.cars.push(car);
+      coverTraffic.push(car);
     }
     pedestrians.people.push(...Array.from({length:6},(_,index)=>{
       const source=pedestrians.people[index];
@@ -212,10 +256,28 @@ function startGame(foot = false, record=null) {
       }
     }
     game.vehicleEffects.popup={text:'NEAR MISS ×3',until:999};game.vehicleEffects.nearChain=3;game.vehicleEffects.nearChainUntil=999;spawnPopup(game.popups,game.vehicle.x+36,game.vehicle.y-58,'NEAR MISS ×3','#ffe16d',999);
+    const coverBarrel=game.barrels.list.reduce((a,b)=>Math.hypot(b.x-game.vehicle.x,b.y-game.vehicle.y)<Math.hypot(a.x-game.vehicle.x,a.y-game.vehicle.y)?b:a);
+    coverBarrel.x=game.vehicle.x+150;coverBarrel.y=game.vehicle.y-40;game.stageBarrel=coverBarrel;
+    game.fireworks.rockets.push({x:game.vehicle.x+330,y:game.vehicle.y-61,vy:-300,fuse:.45,color:'#ffd166'});
+    game.coverStaging=[
+     ...game.police.units.map(unit=>({car:unit.car,dx:unit.car.x-game.vehicle.x,dy:unit.car.y-game.vehicle.y,heading:unit.car.heading,health:unit.car.health})),
+     ...game.police.roadblock.cars.map(car=>({car,dx:car.x-game.vehicle.x,dy:car.y-game.vehicle.y,heading:car.heading,health:car.health})),
+     ...coverTraffic.map(car=>({car,dx:car.x-game.vehicle.x,dy:car.y-game.vehicle.y,heading:car.heading,health:car.health})),
+    ];
   }
-  collectCars();
   renderer.camera.x = spawn.x; renderer.camera.y = spawn.y; renderer.camera.clamp();
-  if(shot==='mission'){game.player.x=game.player.previousX=world.spawnPoints.diner.x+70;game.player.y=game.player.previousY=world.spawnPoints.diner.y;renderer.camera.x=game.player.x;renderer.camera.y=game.player.y;renderer.camera.clamp();game.missions.currentMission=0;game.missions.activity='mission';game.missions.phase='package';game.missions.elapsed=55;game.missions.marker=world.spawnPoints.pier;game.missions.objective='Deliver Lena’s package to the marina pier';game.missions.dialogue={speaker:'Lena',lines:['Take this across town to the pier. The marina guard knows to expect you.'],index:0};game.objective={text:game.missions.objective,position:game.missions.marker};}
+  // Brief-35: the mission frame stages the third mission's opening ('The
+  // Envelope') through the real mission path — a save-shaped state with the
+  // first two missions complete, then one updateMissions step whose E press
+  // at the diner fires begin(2): Lena's dialogue, the objective, the marker
+  // and the pistol grant are all served by missions.js, nothing hand-typed.
+  if(shot==='mission'){game.radio.station=0;game.missions=createMissionState({completed:[0,1],currentMission:2,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:1550,storyElapsed:0});game.player.x=game.player.previousX=world.spawnPoints.diner.x+40;game.player.y=game.player.previousY=world.spawnPoints.diner.y;updateMissions(game.missions,game,0,{wasPressed:code=>code==='KeyE'},parked,traffic);game.player.x=game.player.previousX=world.spawnPoints.diner.x+70;game.player.y=game.player.previousY=world.spawnPoints.diner.y;renderer.camera.x=game.player.x;renderer.camera.y=game.player.y;renderer.camera.clamp();game.objective={text:game.missions.objective,position:game.missions.marker};const stageCarA=createCar(1862,2172,Math.PI/2,2,'#b5524a','parked');parked.push(stageCarA);
+    const stageCarB=createCar(1940,2172,Math.PI/2,4,'#4a7fb5','parked');parked.push(stageCarB);
+    const stageBike=createCar(1784,2172,Math.PI/2,9,'#d95f43','parked');parked.push(stageBike);
+    const stagePeds=[];
+    [[1408,2165,0,999],[1440,2165,Math.PI,999],[1560,2165,-Math.PI/2,0]].forEach(([sx,sy,fx,px],i)=>{const p={...pedestrians.people[i],x:sx,y:sy,facing:fx,state:'walk',pause:px};pedestrians.people.push(p);stagePeds.push(p);});
+    game.missionStaging={cars:[stageCarA,stageCarB],peds:stagePeds,bike:stageBike};}
+  collectCars();
   setState('playing');syncMenu();
 }
 function openHelp() { helpReturn = game.state; setState('help'); }
@@ -292,16 +354,23 @@ function update(dt, time) {
     updatePedestrians(pedestrians,world,focus,allCars,game.recentCrimes,dt,reportCrime);
     updateBoats(world,dt);
     updateFireworks(game.fireworks,world,headlightLevel(game.clockMinutes),dt);
-    if(shot==='foot'&&game.fireworks&&game.fireworks.bursts>0)for(const s of game.fireworks.sparks){if(s.max-s.life>.3)s.held=true;if(s.held){s.vx=0;s.vy=0;s.life=s.max;}}
+    if((shot==='foot'||shot==='cover')&&game.fireworks&&game.fireworks.bursts>0)for(const s of game.fireworks.sparks){if(s.max-s.life>.3)s.held=true;if(s.held){s.vx=0;s.vy=0;s.life=s.max;}}
     if(game.vehicle){game.player.x=game.vehicle.x;game.player.y=game.vehicle.y;game.player.facing=game.vehicle.heading;
-      if(game.vehicle.impact>65&&game.vehicle.cooldown===0){reportCrime('reckless_crash',focus.x,focus.y,1,false);game.vehicle.cooldown=.8;}}
+      if(game.vehicle.impact>65&&game.vehicle.cooldown===0){reportCrime('reckless_crash',focus.x,focus.y,1,false);game.vehicle.cooldown=.8;}
+      const crossing=updateRedLight(game.redLight,game.vehicle,world,game.playSeconds);
+      if(crossing&&crossing.red&&game.vehicle.speed>40&&game.police.units.some(u=>Math.hypot(u.car.x-game.vehicle.x,u.car.y-game.vehicle.y)<520))reportCrime('red_light',game.vehicle.x,game.vehicle.y,1,false);}
 
     if(game.vehicle&&game.vehicle.impact>65&&game.combat.lastCrashTime!==game.playSeconds){damagePlayer(game,game.vehicle.impact*.035);game.combat.lastCrashTime=game.playSeconds;}
     if(!game.vehicle)for(const car of allCars)if(Math.abs(car.speed)>65&&Math.hypot(car.x-game.player.x,car.y-game.player.y)<car.radius+10&&game.playSeconds-game.combat.lastDamage>.8)damagePlayer(game,Math.abs(car.speed)*.12);
     if(!game.missions?.dialogue&&!game.missions?.completion)updateCombat(game,world,input,renderer.camera,allCars,pedestrians.people,reportCrime,dt);
     if(shot==='chase'&&game.stageDriveBy&&game.vehicle){if(!game.combat.effects.some(e=>e.kind==='tracer'))fireDriveBy(game,world,allCars,pedestrians.people,reportCrime);for(const e of game.combat.effects)e.life=e.max;}
     if(game.barrels)updateBarrels(game.barrels,game,allCars,pedestrians.people,reportCrime,dt);
-    if(shot==='chase'&&game.stageBarrel){const b=game.stageBarrel;if(b.state==='idle'&&game.playSeconds>.55){b.state='lit';b.timer=.01;}if(b.state==='gone'){for(const p of game.barrels.particles)p.life=p.max;if(game.barrels.flash)game.barrels.flash.life=game.barrels.flash.max;}}
+    if(game.damageSmoke)updateDamageSmoke(game.damageSmoke,allCars,dt);
+    if(game.news)updateNews(game.news,dt);
+    if((shot==='chase'||shot==='cover')&&game.stageBarrel){const b=game.stageBarrel;if(b.state==='idle'&&game.playSeconds>.55){b.state='lit';b.timer=.01;}if(b.state==='gone'){for(const p of game.barrels.particles)p.life=p.max;if(game.barrels.flash)game.barrels.flash.life=game.barrels.flash.max;}}
+    if((shot==='chase'||shot==='cover')&&game.news?.banner)game.news.banner.t=Math.min(game.news.banner.t,.5);
+    if(shot==='cover'&&game.news?.banner)game.news.banner.t=.5;
+    if(shot==='cover'&&game.coverStaging&&game.vehicle)for(const s of game.coverStaging){s.car.x=game.vehicle.x+s.dx;s.car.y=game.vehicle.y+s.dy;s.car.heading=s.heading;s.car.speed=0;s.car.vx=0;s.car.vy=0;s.car.health=s.health;}
     if (shot !== 'chase'&&shot!=='cover') { updateWanted(game.wanted,world,focus,game.recentCrimes,[...pedestrians.people,...traffic.cars.filter(c=>!c.abandoned)],game.police.units,game.playSeconds,dt); updateEscape(game.escape,game); }
     if(game.player.health<=0)finishOutcome('wasted');else if(game.police.arrest>=1)finishOutcome('busted');
     if(game.missions&&!game.outcome){const before=game.missions.completed.length,faresBefore=game.missions.taxiFares,itemsBefore=game.missions.collectibles.length,dialogueBefore=game.missions.dialogue?.index;updateMissions(game.missions,game,dt,missionInput,parked,traffic);missionKeysConsumed=true;if(game.missions.dialogue?.index!==dialogueBefore)audio.effect('dialogue');if(game.missions.completed.length>before||game.missions.taxiFares>faresBefore||game.missions.collectibles.length>itemsBefore){audio.effect(game.missions.taxiFares>faresBefore?'cash':'pickup');game.save=writeSave(game,game.missions);}game.objective={text:game.missions.objective,position:game.missions.marker};}
@@ -337,19 +406,20 @@ function frame(time) {
   if(game.outcome&&game.courier&&game.courier.phase==='running')updateCourier(game.courier,game,0);
   const elapsed = lastTime === undefined ? 0 : Math.min((time-lastTime)/1000,.1); lastTime = time;
   
+  if (game.state === 'menu' && input.wasPressed('Enter')) { const startButton = document.getElementById('new-game'); if (startButton.onclick) startButton.onclick(); }
   if (!game.outcome && input.anyPressed('Escape','KeyP')) {
     if(game.state==='help') setState(helpReturn);
     else if(game.state==='playing') setState('paused');
     else if(game.state==='paused') setState('playing');
   } else if(!game.outcome&&input.wasPressed('KeyH') && game.state!=='help') openHelp();
   if(game.state==='playing'&&input.wasPressed('KeyE')&&!game.missions?.dialogue&&!game.missions?.completion&&!(game.missions?.phase==='courier'&&!game.vehicle&&Math.hypot(game.player.x-game.missions.courier.x,game.player.y-game.missions.courier.y)<55)&&!(!game.vehicle&&!game.missions?.activity&&Math.hypot(game.player.x-world.spawnPoints.diner.x,game.player.y-world.spawnPoints.diner.y)<90))game.interactionRequested=true;
-  if(game.state==='playing'&&game.vehicle&&input.wasPressed('KeyT'))cycleRadio(game.radio);
+  if(game.state==='playing'&&input.wasPressed('KeyT'))cycleRadio(game.radio);
   if(game.state==='playing'&&game.vehicle&&input.wasPressed('KeyC')){game.audio?.effect('horn');startlePedestrians(pedestrians,world,game.vehicle.x,game.vehicle.y);}
   accumulator += elapsed;
   while(accumulator>=STEP){update(STEP,time);accumulator-=STEP;}
   if (game.state !== 'playing') audio.update(game, elapsed);
   renderer.camera.shake=game.state==='playing'&&!shot&&!game.missions?.dialogue&&!game.missions?.completion?Math.max(game.vehicleEffects.shake,Math.min(game.vehicle?1.1:7,game.combat.shake)):0;
-  renderer.draw(world, null, time, game.clockMinutes);
+  renderer.draw(world, null, time, game.clockMinutes, game.playSeconds);
   // WORLD ACTORS: draw cars and pedestrians here, then Dario; HUD always comes last.
   if(game.state!=='menu' && !(game.state==='help' && helpReturn==='menu')) {
     const camera=renderer.camera;
@@ -370,6 +440,7 @@ function frame(time) {
     if(game.race)drawRaceWorld(ctx,game.race,game,time);
     drawFuelWorld(ctx,game,time);
     if(game.barrels)drawBarrelsWorld(ctx,game.barrels,time);
+    if(game.damageSmoke)drawDamageSmoke(ctx,game.damageSmoke);
     drawSprayWorld(ctx,game,time);
     if(game.robbery)drawRobberyWorld(ctx,game.robbery,game,time);
     if(game.dinerRobbery)drawDinerRobberyWorld(ctx,game.dinerRobbery,game,time);

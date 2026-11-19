@@ -205,6 +205,5 @@ export function drawCar(ctx,car,time=0,light=0) {
   }
   ctx.fillStyle='#e34e45';ctx.fillRect(-l/2,-w/2+3,3,5);ctx.fillRect(-l/2,w/2-8,3,5);
   if(car.alarmT>0&&Math.floor(time/200)%2===0){ctx.fillStyle='#ffb02e';ctx.fillRect(l/2-3,-w/2+3,3,6);ctx.fillRect(l/2-3,w/2-9,3,6);ctx.fillRect(-l/2,-w/2+3,3,5);ctx.fillRect(-l/2,w/2-8,3,5);}
-  if(car.health<35){for(let i=0;i<3;i++){const p=(time*.001+i*.33)%1;ctx.fillStyle=`rgba(61,65,64,${(1-p)*.5})`;ctx.beginPath();ctx.arc(l*.3-p*18,-p*22,4+p*10,0,Math.PI*2);ctx.fill();}}
   ctx.restore();
 }

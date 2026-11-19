@@ -1,5 +1,10 @@
 import { CAMERA, CITY, FONT, PALETTE, WORLD } from './config.js';
 import { clamp, createRandom } from './random.js';
+import { drawBillboards } from './billboards.js';
+import { drawSkyGradient, drawCelestial, drawWetReflections } from './sky.js';
+import { drawStorefronts } from './storefronts.js';
+import { downtownIntersections, drawTrafficLights } from './lights.js';
+import { rainIntensity } from './weather.js';
 
 function visible(rect, view) {
   return rect.x < view.x + view.width && rect.x + rect.width > view.x && rect.y < view.y + view.height && rect.y + rect.height > view.y;
@@ -96,6 +101,31 @@ function drawRoads(context, world, view) {
       context.fillRect(v.x - 44, h.y + dash * 10, 16, 5);
       context.fillRect(v.x + 28, h.y + dash * 10, 16, 5);
     }
+  }
+  context.fillStyle = 'rgba(245,239,215,0.5)';
+  for (const i of downtownIntersections(world)) {
+    if (i.y < view.y - 60 || i.y > view.y + view.height + 60 || i.x < view.x - 60 || i.x > view.x + view.width + 60) continue;
+    for (let k = 0; k < 6; k++) {
+      context.fillRect(i.x - 35 + k * 14, i.y - 45, 9, 18);
+      context.fillRect(i.x - 35 + k * 14, i.y + 27, 9, 18);
+      context.fillRect(i.x - 45, i.y - 35 + k * 14, 18, 9);
+      context.fillRect(i.x + 27, i.y - 35 + k * 14, 18, 9);
+    }
+  }
+  const h2 = world.roads.horizontal[2], h4 = world.roads.horizontal[4], v2 = world.roads.vertical[2], v4 = world.roads.vertical[4];
+  if (h2 && h4 && v2 && v4) {
+    context.strokeStyle = 'rgba(255,205,90,0.32)'; context.lineWidth = 3; context.setLineDash([26, 20]);
+    for (const col of [2, 3, 4]) {
+      const road = world.roads.vertical[col];
+      if (road.x < view.x - 60 || road.x > view.x + view.width + 60 || h4.y < view.y || h2.y > view.y + view.height) continue;
+      context.beginPath(); context.moveTo(road.x, h2.y); context.lineTo(road.x, h4.y); context.stroke();
+    }
+    for (const row of [2, 3, 4]) {
+      const road = world.roads.horizontal[row];
+      if (road.y < view.y - 60 || road.y > view.y + view.height + 60 || v4.x < view.x || v2.x > view.x + view.width) continue;
+      context.beginPath(); context.moveTo(v2.x, road.y); context.lineTo(v4.x, road.y); context.stroke();
+    }
+    context.setLineDash([]);
   }
 }
 
@@ -223,7 +253,7 @@ function drawProp(context, prop, night = 0) {
   context.restore();
 }
 
-function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
+function paintWorld(context, world, view, time = 0, clockMinutes = 600, playSeconds = 0) {
   const hour = ((clockMinutes % 1440) + 1440) % 1440;
   const daylight = Math.max(0, Math.min(1, (Math.sin((hour - 360) / 1440 * Math.PI * 2) + 0.18) / 1.18));
   const warm = Math.max(0, 1 - Math.abs(hour - 720) / 480) < 0.35 ? 0.12 : 0;
@@ -233,6 +263,7 @@ function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
   context.fillStyle = PALETTE.grassDark;
   for (let y = 80; y < CITY.beachStartY; y += 240) context.fillRect(0, y, WORLD.width, 4);
   drawWater(context, world, view, time);
+  drawSkyGradient(context, world, view, clockMinutes);
   context.fillStyle = PALETTE.sand; context.fillRect(world.beach.x, world.beach.y, world.beach.width, world.beach.height);
   context.fillStyle = PALETTE.sandLight; context.fillRect(0, world.beach.y, WORLD.width, 10);
   context.fillStyle = '#a98763'; context.fillRect(world.pier.x, world.pier.y, world.pier.width, world.pier.height);
@@ -250,7 +281,10 @@ function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
     const onVertical = world.roads.vertical.some((road) => Math.abs(x - road.x) < road.width * 0.43 && y < road.length);
     if ((onHorizontal || onVertical) && x >= view.x && x <= view.x + view.width && y >= view.y && y <= view.y + view.height) context.fillRect(x, y, 2, 2);
   }
+  drawTrafficLights(context, world, view, playSeconds);
   for (const building of world.buildings) if (visible(building, view)) drawBuilding(context, building, night);
+  drawBillboards(context, world, view, night, time / 1000);
+  drawStorefronts(context, world, view, night);
   for (const prop of world.props) if (prop.x >= view.x - 42 && prop.x <= view.x + view.width + 42 && prop.y >= view.y - 48 && prop.y <= view.y + view.height + 48) drawProp(context, prop, night);
   for (const boat of world.boats) if (boat.x >= view.x - 70 && boat.x <= view.x + view.width + 70 && boat.y >= view.y - 40 && boat.y <= view.y + view.height + 40) {
     if (boat.patrol) for (const point of boat.patrol.wake) { context.fillStyle = `rgba(235,250,245,${0.16 * (1 - point.age / 1.8)})`; context.beginPath(); context.ellipse(point.x, point.y, 6 + point.age * 7, 3.5 + point.age * 3.5, 0, 0, Math.PI * 2); context.fill(); }
@@ -263,6 +297,8 @@ function paintWorld(context, world, view, time = 0, clockMinutes = 600) {
     context.fillRect(view.x, view.y, view.width, view.height);
     if (warm > 0) { context.fillStyle = `rgba(255, 143, 76, ${warm})`; context.fillRect(view.x, view.y, view.width, view.height); }
   }
+  drawCelestial(context, world, view, clockMinutes);
+  drawWetReflections(context, world, view, night, rainIntensity(playSeconds), time / 1000);
 }
 
 export function districtTint(x,y,world) {
@@ -309,7 +345,7 @@ export function createRenderer(canvas) {
     canvas.width = Math.round(window.innerWidth * pixelRatio);
     canvas.height = Math.round(window.innerHeight * pixelRatio);
   }
-  function draw(world, target, time = 0, clockMinutes = 600) {
+  function draw(world, target, time = 0, clockMinutes = 600, playSeconds = 0) {
     if (target) camera.follow(target.x, target.y);
     const view = camera.view();
     context.setTransform(1, 0, 0, 1, 0, 0);
@@ -318,7 +354,7 @@ export function createRenderer(canvas) {
     const offsetX = (canvas.width - camera.width * scale) / 2;
     const offsetY = (canvas.height - camera.height * scale) / 2;
     context.setTransform(scale, 0, 0, scale, offsetX - view.x * scale + Math.sin(time*.071)*(camera.shake||0)*scale, offsetY - view.y * scale + Math.cos(time*.097)*(camera.shake||0)*scale);
-    paintWorld(context, world, view, time, clockMinutes);
+    paintWorld(context, world, view, time, clockMinutes, playSeconds);
   }
   resize(); window.addEventListener('resize', resize);
   return { camera, draw, resize };

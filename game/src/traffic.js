@@ -1,5 +1,6 @@
 import { createCar, CAR_COLORS } from './vehicles.js';
 import { createRandom, angleDifference } from './random.js';
+import { downtownIntersections, lightState } from './lights.js';
 const random=createRandom('bay-traffic');
 // Cardinal directions clockwise in screen coordinates; right-hand lanes are +20 normal.
 const DX=[1,0,-1,0],DY=[0,1,0,-1];
@@ -26,7 +27,9 @@ function spawn(world,focus) {
 }
 export function createTraffic(world,focus){const cars=[];for(let i=0;i<28;i++){const car=spawn(world,focus);if(car)cars.push(car);}return {cars,timer:0};}
 export function updateTraffic(traffic,world,focus,allCars,pedestrians,dt,onFlee) {
+  traffic.time=(traffic.time||0)+dt;
   traffic.timer-=dt;
+  const lit=new Set(downtownIntersections(world).map(i=>i.col+','+i.row));
   for(let i=traffic.cars.length-1;i>=0;i--){const car=traffic.cars[i];
     if(car.driver!=='traffic-driven') {traffic.cars.splice(i,1);continue;}
     if(Math.hypot(car.x-focus.x,car.y-focus.y)>1700){traffic.cars.splice(i,1);continue;}
@@ -42,6 +45,13 @@ export function updateTraffic(traffic,world,focus,allCars,pedestrians,dt,onFlee)
     const fx=Math.cos(car.heading),fy=Math.sin(car.heading);
     for(const other of allCars){if(other===car)continue;const dx=other.x-car.x,dy=other.y-car.y,ahead=dx*fx+dy*fy,side=Math.abs(dx*fy-dy*fx);if(ahead>0&&ahead<105&&side<28)desired=Math.min(desired,Math.max(0,(ahead-48)*1.6));}
     for(const p of pedestrians){if(p.state==='down')continue;const dx=p.x-car.x,dy=p.y-car.y,ahead=dx*fx+dy*fy;if(ahead>0&&ahead<85&&Math.abs(dx*fy-dy*fx)<23)desired=0;}
+    if(car.route&&lit.has(car.route.col+','+car.route.row)){
+      const axis=(car.route.direction===0||car.route.direction===2)?'EW':'NS';
+      const state=lightState(axis,traffic.time);
+      const along=(car.tx-car.x)*DX[car.route.direction]+(car.ty-car.y)*DY[car.route.direction];
+      const stopAlong=along-54;
+      if(along>54&&stopAlong<150&&(state==='red'||(state==='amber'&&stopAlong>60)))desired=Math.min(desired,Math.max(0,(stopAlong-4)*1.6));
+    }
     car.speed+=Math.max(-220*dt,Math.min(80*dt,desired-car.speed));
     // Move toward the lane waypoint without overshooting tight intersection turns.
     const distance=Math.hypot(car.tx-car.x,car.ty-car.y),step=Math.min(distance,car.speed*dt);

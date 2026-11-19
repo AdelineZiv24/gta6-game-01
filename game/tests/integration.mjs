@@ -3,7 +3,7 @@ import { spikeStrip, updateSpikes, SPIKE_TIME } from '../src/spikes.js';
 import { responseRows } from '../src/hud.js';
 import { displayRows } from '../src/hud.js';
 import { createBus, updateBus, stageBusAtShelter, busShelters } from '../src/bus.js';
-import { radioNow, RADIO_TRACKS, RADIO_STATIONS, BAY_TRACKS, stationNow, createRadio, cycleRadio } from '../src/radio.js';
+import { radioNow, RADIO_TRACKS, RADIO_STATIONS, BAY_TRACKS, TALK_TRACKS, stationNow, createRadio, cycleRadio } from '../src/radio.js';
 const listeners=new Map(),elements=new Map(),storage=new Map();let raf,confirmResult=false,confirms=0,writes=0;
 const ctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>k in o?o[k]:(...args)=>{for(const value of args)if(typeof value==='number')assert(Number.isFinite(value),`${String(k)} received a non-finite coordinate`);},set:(o,k,v)=>(o[k]=v,true)});
 function element(id){if(!elements.has(id))elements.set(id,{id,hidden:true,disabled:false,style:{},focus(){},addEventListener(){},getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:1280,height:800})});return elements.get(id);}
@@ -36,7 +36,7 @@ const {createBarrels,updateBarrels,drawBarrelsWorld,barrelPositions}=await impor
 const {createFireworks,updateFireworks}=await import('../src/fireworks.js');
 const {districtTint,signHaloAlpha,lampPoolAlpha}=await import('../src/render.js');
 const {createPedestrians,updatePedestrians,drawPedestrian,startlePedestrians}=await import('../src/pedestrians.js');
-const {weatherAt,weatherLabel}=await import('../src/weather.js');
+const {weatherAt,weatherLabel,rainIntensity}=await import('../src/weather.js');
 const {createRep,repLevel,repProgress,awardRep,REP_RAMPAGE_CAP}=await import('../src/rep.js');
 const {performerSpot,drawPerformer}=await import('../src/performer.js');
 const seeded=createWorld('1'),again=createWorld('1');
@@ -53,6 +53,86 @@ assert.equal(geometry,JSON.stringify({buildings:seeded.buildings,parkingSpots:se
  assert.equal(signHaloAlpha(0),0);assert.equal(signHaloAlpha(1),0.4);assert(signHaloAlpha(0.5)>0&&signHaloAlpha(0.5)<signHaloAlpha(1));assert.equal(signHaloAlpha(-1),0);assert.equal(signHaloAlpha(2),0.4);
  console.log('B24-T3 Sign halo alpha is zero by day and scales with the night level: PASS');
 }
+{
+ const {lightState,downtownIntersections,LIGHT_CYCLE}=await import('../src/lights.js');
+ assert.equal(LIGHT_CYCLE,24);
+ assert.equal(lightState('NS',2),'green');assert.equal(lightState('EW',2),'red');
+ assert.equal(lightState('NS',11),'amber');assert.equal(lightState('EW',11),'red');
+ assert.equal(lightState('NS',12.5),'red');assert.equal(lightState('EW',12.5),'red');
+ assert.equal(lightState('NS',14),'red');assert.equal(lightState('EW',14),'green');
+ assert.equal(lightState('EW',23.5),'amber');assert.equal(lightState('NS',23.5),'red');
+ assert.equal(lightState('NS',26),'green');assert.equal(lightState('EW',-1),'amber');
+ console.log('B29-T3 Light cycle is a deterministic 24 s function with amber and all-red clearance phases: PASS');
+ const set=downtownIntersections(seeded);
+ assert.equal(set.length,9);assert(set.some(i=>i.col===3&&i.row===3));assert(!set.some(i=>i.col===1||i.row===1));
+ assert(set.every(i=>i.x===seeded.roads.vertical[i.col].x&&i.y===seeded.roads.horizontal[i.row].y));
+ console.log('B29-T4 Downtown light set is the central 3x3 intersections at the road crossings: PASS');
+}
+{
+ const {updateTraffic}=await import('../src/traffic.js');
+ const ix=seeded.roads.vertical[3].x,iy=seeded.roads.horizontal[3].y;
+ const car=createCar(ix-320,iy+20,0,1,undefined,'traffic-driven');car.speed=92;car.route={col:3,row:3,direction:0};car.tx=ix;car.ty=iy+20;
+ const tr={cars:[car],timer:99,time:2};
+ const focus={x:ix-320,y:iy};
+ for(let i=0;i<240;i++)updateTraffic(tr,seeded,focus,[car],[],1/60,()=>{});
+ assert(car.x<ix-48&&car.speed<8,'traffic stops at a red downtown light');
+ tr.time=14;
+ for(let i=0;i<180;i++)updateTraffic(tr,seeded,focus,[car],[],1/60,()=>{});
+ assert(car.x>ix-48,'traffic proceeds on green');
+ console.log('B29-T5 Traffic AI stops at a red downtown light and proceeds on green: PASS');
+ const ox=seeded.roads.vertical[1].x,oy=seeded.roads.horizontal[1].y;
+ const car2=createCar(ox-320,oy+20,0,1,undefined,'traffic-driven');car2.speed=92;car2.route={col:1,row:1,direction:0};car2.tx=ox;car2.ty=oy+20;
+ const tr2={cars:[car2],timer:99,time:2};
+ for(let i=0;i<240;i++)updateTraffic(tr2,seeded,{x:ox-320,y:oy},[car2],[],1/60,()=>{});
+ assert(car2.x>ox-48,'traffic ignores lights outside the downtown set');
+ console.log('B29-T6 Traffic ignores lights outside the downtown set: PASS');
+}
+{
+ const {createRedLightTracker,updateRedLight}=await import('../src/lights.js');
+ const ix=seeded.roads.vertical[3].x,iy=seeded.roads.horizontal[3].y;
+ const tracker=createRedLightTracker();
+ const car={x:ix-100,y:iy,heading:0,speed:100};
+ assert.equal(updateRedLight(tracker,car,seeded,14),null);
+ car.x=ix-20;const ev=updateRedLight(tracker,car,seeded,2);
+ assert(ev&&ev.red===true&&ev.axis==='EW'&&ev.col===3&&ev.row===3);
+ assert.equal(updateRedLight(tracker,car,seeded,2),null);
+ car.x=ix+100;assert.equal(updateRedLight(tracker,car,seeded,2),null);
+ car.x=ix;const ev2=updateRedLight(tracker,car,seeded,14);
+ assert(ev2&&ev2.red===false);
+ console.log('B29-T7 Red-light crossing detector is edge-triggered per entry and reports the axis phase: PASS');
+}
+{
+ location.search='?shot=drive&seed=1';
+ const {game:g}=await import('../src/main.js?b29-red');
+ const {spawnPolice}=await import('../src/police.js');
+ const {setWanted}=await import('../src/wanted.js');
+ const ix=seeded.roads.vertical[3].x,iy=seeded.roads.horizontal[3].y;
+ assert(g.redLight&&g.redLight.inside===null);
+ setWanted(g.wanted,1,g.vehicle);
+ let t=0;
+ for(let i=0;i<40&&!g.recentCrimes.some(c=>c.type==='red_light');i++){
+  if(!g.police.units.length)spawnPolice(g.police,g.vehicle.x+180,g.vehicle.y-280,0,false);
+  g.vehicle.x=ix-130+i*7;g.vehicle.y=iy+20;g.vehicle.heading=0;g.vehicle.speed=120;g.playSeconds=2;
+  raf(t);t+=1000/60;
+ }
+ const crime=g.recentCrimes.find(c=>c.type==='red_light');
+ assert(crime&&crime.severity===1&&crime.violent===false,'red-light offence reports severity 1 through reportCrime');
+ console.log('B29-T8 Running a downtown red in sight of a police unit reports a severity-1 offence: PASS');
+}
+{
+ const {drawTrafficLights}=await import('../src/lights.js');
+ const fills=[],rects=[];
+ const ctx={save(){},restore(){},beginPath(){},arc(){},fill(){fills.push(this.fillStyle);},fillRect(x,y,w,h){rects.push([x,y,w,h]);}};
+ const ix=seeded.roads.vertical[3].x,iy=seeded.roads.horizontal[3].y;
+ const view={x:ix-480,y:iy-300,width:960,height:600};
+ drawTrafficLights(ctx,seeded,view,2);
+ assert(fills.includes('#ff4040')&&fills.includes('#2fe07a'));
+ assert(rects.some(r=>r[2]===10&&r[3]===22));
+ fills.length=0;drawTrafficLights(ctx,seeded,view,11);
+ assert(fills.includes('#ffb020'));
+ console.log('B29-T9 Traffic light poles draw the live phase colours for both axes: PASS');
+}
+
 {
  const fills=[];
  const rec=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),fill(){fills.push({style:this.fillStyle,alpha:this.globalAlpha===undefined?1:this.globalAlpha});}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
@@ -196,12 +276,12 @@ console.log('Flatbed and roadster models spawn, drive, stay in stat range: PASS'
 }
 console.log('Traffic fleets include the flatbed and the roadster: PASS');
 {
- assert.equal(RADIO_STATIONS.length,2);assert.equal(RADIO_STATIONS[0].name,'CORAL FM 98.1');assert.equal(RADIO_STATIONS[1].name,'BAY FM 101.3');assert.equal(BAY_TRACKS.length,5);assert(BAY_TRACKS.every(t=>t.title&&t.artist));
- assert.equal(stationNow(0,0).station,'CORAL FM 98.1');assert.equal(stationNow(0,1).station,'BAY FM 101.3');
+ assert.equal(RADIO_STATIONS.length,3);assert.equal(RADIO_STATIONS[0].name,'CORAL FM 98.1');assert.equal(RADIO_STATIONS[1].name,'BAY FM 101.3');assert.equal(RADIO_STATIONS[2].name,'BAY TALK 90.7');assert.equal(RADIO_STATIONS[0].freq,'98.1');assert.equal(RADIO_STATIONS[1].freq,'101.3');assert.equal(RADIO_STATIONS[2].freq,'90.7');assert.equal(BAY_TRACKS.length,5);assert(BAY_TRACKS.every(t=>t.title&&t.artist));assert(TALK_TRACKS.length>=4);assert(TALK_TRACKS.every(t=>t.title&&t.artist));
+ assert.equal(stationNow(0,0).station,'CORAL FM 98.1');assert.equal(stationNow(0,1).station,'BAY FM 101.3');assert.equal(stationNow(0,2).station,'BAY TALK 90.7');
  assert.notEqual(stationNow(0,1).index,stationNow(25,1).index);assert.equal(stationNow(24*BAY_TRACKS.length,1).index,stationNow(0,1).index);
- const radio=createRadio();assert.equal(radio.station,0);assert.equal(cycleRadio(radio),1);assert.equal(cycleRadio(radio),2);assert.equal(cycleRadio(radio),0);
+ const radio=createRadio();assert.equal(radio.station,0);assert.equal(cycleRadio(radio),1);assert.equal(cycleRadio(radio),2);assert.equal(cycleRadio(radio),3);assert.equal(cycleRadio(radio),0);
 }
-console.log('BAY FM second station and CORAL-BAY-OFF cycle: PASS');
+console.log('Three stations and the CORAL-BAY-TALK-OFF cycle: PASS');
 assert.equal(weatherAt(0),'clear');assert.equal(weatherAt(149.9),'clear');assert.equal(weatherAt(150),'rain');assert.equal(weatherAt(194.9),'rain');assert.equal(weatherAt(195),'clear');assert.equal(weatherAt(355),'rain');assert.equal(weatherAt(-10),'rain');
 assert.equal(weatherLabel(0),'WEATHER · CLEAR');assert.equal(weatherLabel(160),'WEATHER · RAIN');
 console.log('Weather cycle is a pure function of play time: PASS');
@@ -500,7 +580,8 @@ for(const scene of ['start','mission','foot','chase','cover']){
  const {game:staged}=await import(`../src/main.js?scene-${scene}`);
  let frameTime=0;
  for(let index=0;index<180;index++){raf(frameTime);frameTime+=1000/60;}
- assert.equal(staged.world.seed,'1');assert.equal(staged.clockMinutes,scene==='start'?555:(scene==='cover'||scene==='foot')?1100:1040);
+ assert.equal(staged.world.seed,'1');assert.equal(staged.clockMinutes,scene==='start'?555:(scene==='cover'||scene==='foot')?1100:scene==='chase'?1300:1040); // brief-33: chase re-pinned to the 1300 night clock (authorised re-spec, chase only)
+ assert.equal(staged.radio.station,{cover:1,chase:1,foot:2}[scene]??staged.radio.station);
  assert.equal(staged.state,scene==='start'?'menu':'playing');
  assert([staged.player.x,staged.player.y].every(Number.isFinite));
  for(const unit of staged.police.units)assert([unit.x,unit.y,unit.car.x,unit.car.y,unit.car.heading].every(Number.isFinite));
@@ -509,7 +590,7 @@ for(const scene of ['start','mission','foot','chase','cover']){
  if(scene==='cover'||scene==='chase'||scene==='mission')assert.equal(weatherAt(staged.playSeconds),'clear');
  if(scene==='foot')assert.equal(weatherAt(staged.playSeconds),'rain');
  if(scene==='cover'){
-  assert(staged.radio);assert.equal(staged.radio.station,0);assert(headlightLevel(staged.clockMinutes)>0.5);
+  assert(staged.radio);assert.equal(staged.radio.station,1);assert(headlightLevel(staged.clockMinutes)>0.5);
   assert(staged.rep);assert.equal(staged.rep.xp,0);
   assert.equal(staged.race.phase,'idle');
   assert.equal(staged.state,'playing');assert.equal(staged.wanted.stars,5);assert.equal(staged.police.units.length,4);assert(staged.police.units.some(unit=>unit.car.interceptor));assert(staged.vehicleEffects.popup);assert.equal(staged.vehicleEffects.popup.text,'NEAR MISS ×3');assert.equal(staged.vehicleEffects.nearChain,3);assert(staged.popups.list.some(entry=>entry.life>0&&entry.text==='NEAR MISS ×3'));assert(staged.vehicleEffects.markCursor>0);
@@ -523,6 +604,11 @@ for(const scene of ['start','mission','foot','chase','cover']){
   assert(coverRows.some(row=>row.callsign==='BLOCK'&&row.type==='ROADBLOCK'&&row.state==='AHEAD'));
   assert.equal(staged.clockMinutes,1100);assert(headlightLevel(staged.clockMinutes)>0.9);
   console.log('B24-T1 Cover stages at the 1100 dusk clock with near-full headlight level, other scenes keep their pinned clocks: PASS');
+  assert(staged.news.banner,'cover stages the BREAKING banner');assert(staged.news.banner.headline.startsWith('EXPLOSION ROCKS'));
+  console.log('B29-T1 Cover stages the BREAKING banner through the real barrel detonation path: PASS');
+  assert(staged.fireworks.burstPoints.some(p=>Math.hypot(p.x-staged.vehicle.x,p.y-staged.vehicle.y)<430),'cover stages a fireworks burst in frame');
+  assert(staged.fireworks.sparks.some(s=>s.held),'cover holds the burst sparks as a radial disc');
+  console.log('B29-T2 Cover stages one age-frozen radial fireworks burst in frame: PASS');
  }
  console.log(`Seed=1 ${scene} scene: 180 frames, pinned clock, finite actors PASS`);
 }
@@ -911,4 +997,1016 @@ function reportLog(){const crimes=[];const report=(type,x,y,severity,violent)=>{
  assert(footDusk.fireworks.burstPoints.some(p=>Math.abs(p.x-footDusk.player.x)<550&&Math.abs(p.y-footDusk.player.y)<344));
  location.search='';
  console.log('B26-T11 Foot scene moves to the 1100 dusk clock and stages a fireworks burst in frame: PASS');
+}
+
+const {BILLBOARD_BRANDS,createBillboards,billboardGlow,billboardGlowAlpha,drawBillboards}=await import('../src/billboards.js');
+{
+ const summarize=world=>world.billboards.map(({brand,building,index,x,y,width,height})=>({brand,buildingId:building.id,index,x,y,width,height}));
+ assert.deepEqual(summarize(createWorld()),summarize(createWorld()));
+ console.log('B27-T1 Billboard brands, host ids and geometry are deterministic: PASS');
+}
+{
+ const world=createWorld();
+ const brands=[
+  {brand:'CORAL COLA',colors:['#e2483d','#ffd166']},
+  {brand:'HOTEL MARLIN',colors:['#f2b33d','#7be3f0']},
+  {brand:'PIER 9 SEAFOOD',colors:['#2fd4c4','#ffe9a8']},
+  {brand:'BAY FM 101.3',colors:['#b678f0','#6ee7ff']},
+  {brand:'CORAL FM 98.1',colors:['#f28c3d','#fff3dc']},
+  {brand:'VOLTA MOTORS',colors:['#7be3f0','#f9d777']},
+ ];
+ assert.deepEqual(BILLBOARD_BRANDS,brands);assert.equal(world.billboards.length,6);
+ assert.deepEqual(world.billboards.map(({brand,colors})=>({brand,colors})),brands);
+ const anchors=[
+  {x:world.roads.vertical[3].x,y:world.roads.horizontal[3].y},
+  world.props.find(prop=>prop.kind==='fountain')||{x:world.roads.vertical[4].x,y:world.roads.horizontal[2].y},
+  world.spawnPoints.pier,world.spawnPoints.diner,
+  {x:world.roads.vertical[5].x,y:world.roads.horizontal[4].y},
+  {x:(world.roads.vertical[3].x+world.roads.vertical[4].x)/2,y:(world.roads.horizontal[3].y+world.roads.horizontal[4].y)/2},
+ ];
+ const picked=new Set();
+ world.billboards.forEach((billboard,index)=>{
+  const {building}=billboard,anchor=anchors[index];
+  assert.equal(building.landmark,false);assert(building.width>=150);assert(!picked.has(building));
+  const distance=candidate=>Math.hypot(candidate.x+candidate.width/2-anchor.x,candidate.y+candidate.height/2-anchor.y);
+  const eligible=world.buildings.filter(candidate=>!candidate.landmark&&candidate.width>=150&&!picked.has(candidate));
+  let candidates=eligible;
+  if(index===5){
+   const centreX=world.roads.vertical[3].x+180,centreY=world.roads.horizontal[3].y+20;
+   const inFrame=eligible.filter(candidate=>{
+    const x=candidate.x+10,y=candidate.y+8,width=candidate.width-20;
+    return x>=centreX-430&&x+width<=centreX+430&&y>=centreY-260&&y+34<=centreY+260;
+   });
+   if(inFrame.length)candidates=inFrame;
+  }
+  const nearest=candidates.reduce((best,candidate)=>distance(candidate)<distance(best)?candidate:best);
+  assert.equal(building,nearest);assert.equal(billboard.index,index);
+  assert.deepEqual([billboard.x,billboard.y,billboard.width,billboard.height],[building.x+10,building.y+8,building.width-20,34]);
+  picked.add(building);
+ });
+ assert.equal(new Set(world.billboards.map(billboard=>billboard.building.id)).size,6);
+ const panel=world.billboards.find(billboard=>billboard.brand==='VOLTA MOTORS');
+ const centreX=world.roads.vertical[3].x+180,centreY=world.roads.horizontal[3].y+20;
+ assert(panel.x>=centreX-430);assert(panel.x+panel.width<=centreX+430);
+ assert(panel.y>=centreY-260);assert(panel.y+panel.height<=centreY+260);
+ const withoutFountain={...world,props:world.props.filter(prop=>prop.kind!=='fountain')};
+ assert.equal(createBillboards(withoutFountain).length,6);
+ console.log('B27-T2 Six ordered brands use distinct nearest eligible hosts with the specified panel geometry and VOLTA MOTORS fits the cover view: PASS');
+}
+{
+ const world=createWorld(),before=JSON.stringify(world.buildings),length=world.buildings.length;
+ const samples=[0,Math.floor(length/2),length-1].map(index=>({...world.buildings[index]}));
+ assert.deepEqual(createBillboards(world),world.billboards);
+ assert.equal(world.buildings.length,length);assert.equal(JSON.stringify(world.buildings),before);
+ assert.deepEqual([0,Math.floor(length/2),length-1].map(index=>({...world.buildings[index]})),samples);
+ console.log('B27-T3 Recreating billboards preserves the building list and all building fields: PASS');
+}
+{
+ assert.equal(billboardGlowAlpha(0),0);assert.equal(billboardGlowAlpha(1),0.4);
+ for(const night of [-1,0,0.5,1,2])assert.equal(billboardGlowAlpha(night),signHaloAlpha(night));
+ const [first,second]=createWorld().billboards;
+ for(const seconds of [0,3.99,4,8,12.5]){
+  assert.equal(billboardGlow(first,seconds),billboardGlow(first,seconds));
+  assert.notEqual(billboardGlow(first,seconds),billboardGlow(first,seconds+4));
+ }
+ const phaseShifted={...first,index:second.index};
+ assert([0,4,8].some(seconds=>billboardGlow(first,seconds)!==billboardGlow(phaseShifted,seconds)));
+ assert.equal(billboardGlow(first,3.99),first.colors[0]);assert.equal(billboardGlow(first,4),first.colors[1]);
+ console.log('B27-T4 Glow matches the sign halo curve and cycles every four seconds with index phase offsets: PASS');
+}
+{
+ const world=createWorld(),view={x:0,y:0,width:10000,height:10000},fills=[],texts=[],stack=[];
+ let pathKind=null;
+ const rec=new Proxy({
+  globalAlpha:1,
+  save(){stack.push({alpha:this.globalAlpha,style:this.fillStyle});},
+  restore(){const state=stack.pop();this.globalAlpha=state.alpha;this.fillStyle=state.style;},
+  beginPath(){pathKind=null;},roundRect(){pathKind='halo';},arc(){pathKind='bulb';},
+  fill(){fills.push({kind:pathKind,alpha:this.globalAlpha,style:this.fillStyle});},
+  fillRect(){fills.push({kind:'panel',alpha:this.globalAlpha,style:this.fillStyle});},
+  fillText(text){texts.push(text);},
+ },{get:(object,key)=>key in object?object[key]:(...args)=>{},set:(object,key,value)=>(object[key]=value,true)});
+ drawBillboards(rec,world,view,0.92,5);
+ assert.deepEqual(texts,world.billboards.map(billboard=>billboard.brand));
+ assert.equal(fills.filter(fill=>fill.kind==='halo').length,6);
+ assert(fills.some(fill=>fill.kind==='halo'&&fill.alpha===billboardGlowAlpha(0.92)));
+ assert(fills.filter(fill=>fill.kind!=='halo').every(fill=>fill.alpha===1));assert.equal(stack.length,0);
+ fills.length=0;texts.length=0;
+ drawBillboards(rec,world,view,0,5);
+ assert.deepEqual(texts,world.billboards.map(billboard=>billboard.brand));
+ assert(!fills.some(fill=>fill.kind==='halo'&&fill.alpha>0));assert(!fills.some(fill=>fill.kind==='halo'));
+ fills.length=0;texts.length=0;
+ drawBillboards(rec,world,{x:-1000,y:-1000,width:1,height:1},0.92,5);
+ assert.equal(texts.length,0);assert.equal(fills.length,0);
+ drawBillboards(rec,{},view,0.92,5);assert.equal(texts.length,0);
+ console.log('B27-T5 All six brand texts draw by day and night, halos use the night alpha only, and offscreen panels are culled: PASS');
+}
+
+const { createNews, newsAnchors, newsHeadline, newsCrime, updateNews } = await import('../src/news.js');
+const { drawHUD } = await import('../src/hud.js');
+const { martShops } = await import('../src/robbery.js');
+const { writeSave, loadSave, SAVE_VERSION } = await import('../src/save.js');
+{
+ const world=createWorld(),news=createNews();
+ assert(newsCrime(news,{type:'explosion',severity:4,x:world.spawnPoints.player.x,y:world.spawnPoints.player.y},world));
+ assert(news.banner.headline.startsWith('EXPLOSION ROCKS '));
+ assert(newsCrime(news,{type:'police_hit',severity:4,x:world.spawnPoints.player.x,y:world.spawnPoints.player.y},world));
+ assert(news.banner.headline.startsWith('OFFICER DOWN IN '));
+ const mart=martShops(world)[0];
+ assert(newsCrime(news,{type:'robbery',severity:3,x:mart.x,y:mart.y},world));
+ assert.equal(news.banner.headline,'ARMED ROBBERY AT CORAL MART');
+ console.log('B27-T6 Breaking news fires for severe explosions, officer hits and robberies: PASS');
+}
+{
+ const world=createWorld(),news=createNews(),point=world.spawnPoints.player;
+ for(const [type,severity] of [['weapon_fired',3],['pedestrian_hit',3],['vehicle_theft',1],['carjacking',2],['reckless_crash',1],['explosion',3],['police_hit',3]]){
+  assert.equal(newsCrime(news,{type,severity,x:point.x,y:point.y},world),false,type);
+  assert.equal(news.banner,null,type);
+ }
+ console.log('B27-T7 Non-breaking crimes leave the news banner untouched: PASS');
+}
+{
+ const world=createWorld(),anchors=newsAnchors(world);
+ assert.equal(newsHeadline('explosion',world.spawnPoints.pier.x,world.spawnPoints.pier.y,world),'EXPLOSION ROCKS THE PIER');
+ const station=gasStations(world)[0];
+ assert.equal(newsHeadline('explosion',station.x,station.y,world),'EXPLOSION ROCKS GAS STATION');
+ assert.equal(newsHeadline('explosion',world.roads.vertical[3].x,world.roads.horizontal[3].y,world),'EXPLOSION ROCKS DOWNTOWN');
+ assert(anchors.some(anchor=>anchor.name==='DOWNTOWN'));
+ console.log('B27-T8 Headlines use the nearest named world anchor: PASS');
+}
+{
+ const world=createWorld(),news=createNews(),point=world.spawnPoints.pier;
+ newsCrime(news,{type:'explosion',severity:4,x:point.x,y:point.y},world);
+ for(let step=0;step<49;step++)updateNews(news,.1);
+ assert(Math.abs(news.banner.t-4.9)<1e-8);assert(news.banner);
+ updateNews(news,.1);assert.equal(news.banner,null);assert.equal(news.ticker.headline,'EXPLOSION ROCKS THE PIER');
+ for(let step=0;step<120;step++)updateNews(news,.1);
+ assert.equal(news.ticker,null);
+ newsCrime(news,{type:'explosion',severity:4,x:point.x,y:point.y},world);updateNews(news,.2);
+ newsCrime(news,{type:'robbery',severity:1,x:point.x,y:point.y},world);
+ assert.equal(news.banner.headline,'ARMED ROBBERY AT THE PIER');assert.equal(news.banner.t,0);
+ console.log('B27-T9 Banner and ticker lifetimes and latest-news replacement work: PASS');
+}
+{
+ const main=await import('../src/main.js'),point=main.game.world.spawnPoints.pier;
+ main.game.news=createNews();main.reportCrime('explosion',point.x,point.y,4);
+ assert(main.game.news.banner?.headline.startsWith('EXPLOSION ROCKS '));
+ main.game.news=createNews();main.reportCrime('vehicle_theft',point.x,point.y,1);
+ assert.equal(main.game.news.banner,null);
+ location.search='?shot=chase&seed=1';
+ const chase=await import('../src/main.js?news-chase-scene');
+ let chaseTime=0;
+ for(let step=0;step<180;step++){raf(chaseTime);chaseTime+=1000/60;}
+ assert(chase.game.news.banner?.headline.startsWith('EXPLOSION ROCKS '));
+ assert(chase.game.news.banner.t<=.5+1/60);
+ location.search='';
+ console.log('B27-T10 Real crime reporting and staged chase hold a breaking banner: PASS');
+}
+{
+ const world=createWorld(),texts=[],state={globalAlpha:1,textAlign:'center'};
+ const recording=new Proxy({save(){},restore(){},setTransform(){},roundRect(){},fillText(text){texts.push(text);},measureText:text=>({width:text.length*7})},{get:(object,key)=>key in object?object[key]:state[key]??(()=>{}),set:(object,key,value)=>(state[key]=value,true)});
+ const staged={world,player:{name:'Dario Venn',x:0,y:0,health:100,maxHealth:100,armour:0,maxArmour:100,cash:180},minimap:{},objective:null,width:1280,height:800,pixelRatio:1,playSeconds:0,news:{banner:{headline:'EXPLOSION ROCKS THE PIER',t:.2,dur:5},ticker:null},vehicle:null,combat:null};
+ drawHUD(recording,staged);
+ assert(texts.includes('BREAKING'));assert(texts.includes('EXPLOSION ROCKS THE PIER'));
+ staged.vehicle={model:{name:'Test Coupe'},speed:0,health:100,color:'#fff'};staged.news={banner:null,ticker:{headline:'ARMED ROBBERY AT CORAL MART'}};texts.length=0;drawHUD(recording,staged);
+ assert(texts.some(text=>text.startsWith('NEWS FLASH —')));
+ staged.news.ticker=null;texts.length=0;drawHUD(recording,staged);assert(texts.some(text=>text.includes('BAY FM')||text.includes('CORAL FM')));
+ console.log('B27-T11 HUD draws the banner, news ticker takeover and normal station line: PASS');
+}
+{
+ const g={player:{cash:180,x:1,y:2},combat:{pistol:false},missions:{completed:[],currentMission:0,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:0},news:createNews()};
+ const record=writeSave(g,g.missions);
+ assert.equal(SAVE_VERSION,1);assert(record);assert(!Object.hasOwn(record,'news'));assert.deepEqual(loadSave(),record);
+ console.log('B27-T12 Save round-trip excludes session news and retains version 1: PASS');
+}
+{
+ const pool=createPedestrians(seeded),person=pool.people[0];
+ Object.assign(person,{x:seeded.roads.vertical[3].x+120,y:seeded.roads.horizontal[3].y,state:'walk',pause:0,panic:0});
+ const crimes=[{id:1,type:'assault',x:person.x-120,y:person.y,severity:3,violent:true}],focus={x:person.x,y:person.y};
+ updatePedestrians(pool,seeded,focus,[],crimes,1/60,()=>{});
+ assert(person.fleeT>3);assert(person.panic>0);
+ for(let tick=0;tick<90;tick++)updatePedestrians(pool,seeded,focus,[],crimes,1/60,()=>{});
+ assert(Math.hypot(person.x-crimes[0].x,person.y-crimes[0].y)>180);
+ console.log('B28-T1 Severe violent crime directs pedestrians away from its origin: PASS');
+}
+{
+ const pool=createPedestrians(seeded),px=seeded.roads.vertical[3].x,py=seeded.roads.horizontal[3].y;
+ const [near,far]=pool.people;
+ Object.assign(near,{x:px+120,y:py,state:'walk',pause:0,panic:0});
+ Object.assign(far,{x:px+220,y:py,state:'walk',pause:0,panic:0});
+ updatePedestrians(pool,seeded,{x:px,y:py},[],[{id:1,type:'explosion',x:px,y:py,severity:4,violent:true}],1/60,()=>{});
+ assert(Math.hypot(near.x-px,near.y-py)-120>=26);
+ assert(Math.hypot(far.x-px,far.y-py)-220<10);assert(far.fleeT>3);
+ console.log('B28-T2 Explosion scatters nearby pedestrians within the 170-unit band: PASS');
+}
+{
+ const pool=createPedestrians(seeded),px=seeded.roads.vertical[3].x,py=seeded.roads.horizontal[3].y;
+ const crowd=pool.people.slice(0,24),focus={x:px,y:py};
+ for(const [index,person] of crowd.entries()){
+  Object.assign(person,{x:px+30+index%6*20,y:py+(Math.floor(index/6)-1.5)*10,state:'walk',pause:0,panic:0});
+ }
+ updatePedestrians(pool,seeded,focus,[],[{id:1,type:'weapon_fired',x:px,y:py,severity:3,violent:true}],1/60,()=>{});
+ const crouched=crowd.filter(person=>person.crouch>0);
+ assert(crouched.length>=3);assert(crowd.some(person=>person.bang>0));
+ assert(crowd.every(person=>person.crouch===0||(person.crouch>=1&&person.crouch<=2)));
+ console.log('B28-T3 Gunfire produces crouches of one to two seconds and alarm markers: PASS');
+ for(let tick=0;tick<180;tick++)updatePedestrians(pool,seeded,focus,[],[],1/60,()=>{});
+ assert(pool.people.every(person=>person.crouch===0&&person.bang===0));
+ const positions=crouched.map(person=>({x:person.x,y:person.y}));
+ for(let tick=0;tick<60;tick++)updatePedestrians(pool,seeded,focus,[],[],1/60,()=>{});
+ assert(crouched.some((person,index)=>Math.hypot(person.x-positions[index].x,person.y-positions[index].y)>0));
+ console.log('B28-T4 Crouches and alarm markers expire and walking resumes: PASS');
+}
+{
+ const first=await import('../src/pedestrians.js?b28-determinism-first');
+ const second=await import('../src/pedestrians.js?b28-determinism-second');
+ const px=seeded.roads.vertical[3].x,py=seeded.roads.horizontal[3].y;
+ const snapshots=[];
+ for(const module of [first,second]){
+  const pool=module.createPedestrians(seeded),focus={x:px,y:py};
+  for(const [index,person] of pool.people.slice(0,8).entries())Object.assign(person,{x:px+80+index*15,y:py,state:'walk',pause:0,panic:0});
+  const crimes=[{id:1,type:'explosion',x:px,y:py,severity:4,violent:true}];
+  module.updatePedestrians(pool,seeded,focus,[],crimes,1/60,()=>{});
+  for(let tick=0;tick<120;tick++)module.updatePedestrians(pool,seeded,focus,[],crimes,1/60,()=>{});
+  snapshots.push(JSON.stringify(pool.people.map(person=>({x:+person.x.toFixed(6),y:+person.y.toFixed(6),state:person.state,crouch:+person.crouch.toFixed(6),fleeT:+person.fleeT.toFixed(6)}))));
+ }
+ assert.equal(snapshots[0],snapshots[1]);
+ console.log('B28-T5 Identically seeded crowd sessions replay deterministically: PASS');
+}
+{
+ const px=seeded.roads.vertical[3].x,py=seeded.roads.horizontal[3].y;
+ for(const [severity,violent] of [[2,true],[4,false]]){
+  const pool=createPedestrians(seeded),person=pool.people[0];
+  Object.assign(person,{x:px+100,y:py,state:'walk',pause:0,panic:0});
+  updatePedestrians(pool,seeded,{x:px,y:py},[],[{id:1,type:'assault',x:px,y:py,severity,violent}],1/60,()=>{});
+  assert.equal(person.fleeT,0);if(!violent)assert.equal(person.panic,0);
+ }
+ console.log('B28-T6 Directed fleeing requires severity three and violent crime: PASS');
+}
+{
+ const person=createPedestrians(seeded).people[0],texts=[],state={};
+ const recording=new Proxy({fillText(text){texts.push(text);}},{get:(object,key)=>key in object?object[key]:state[key]??(()=>{}),set:(object,key,value)=>(state[key]=value,true)});
+ person.crouch=1;person.bang=.5;
+ assert.doesNotThrow(()=>drawPedestrian(recording,person));assert(texts.includes('!'));
+ person.crouch=0;person.bang=0;texts.length=0;
+ assert.doesNotThrow(()=>drawPedestrian(recording,person));assert(!texts.includes('!'));
+ console.log('B28-T7 Crouched pedestrians draw safely and alarm markers follow their timer: PASS');
+}
+
+const {skyStops,celestial}=await import('../src/sky.js');
+{
+ for(const [minute,top,bottom] of [
+  [720,'#2f6fb8','#a5d8ec'],
+  [0,'#0a1c38','#14335e'],
+  [1100,'#2e3a6e','#ff8c4a'],
+  [420,'#46689c','#f6b26b'],
+ ]){
+  assert.deepEqual(skyStops(minute),[{offset:0,color:top},{offset:1,color:bottom}]);
+ }
+ const channels=color=>[1,3,5].map(index=>Number.parseInt(color.slice(index,index+2),16));
+ for(let minute=0;minute<1440;minute+=5){
+  const current=skyStops(minute),next=skyStops(minute+5);
+  for(const [index,{color}] of current.entries()){
+   const nextChannels=channels(next[index].color);
+   assert(channels(color).every((value,channel)=>Math.abs(value-nextChannels[channel])<=14));
+  }
+ }
+ console.log('B28-T8 Sky gradients match the keyframes and transition smoothly: PASS');
+}
+{
+ const noon=celestial(720),dusk=celestial(1100),dawn=celestial(420);
+ assert.equal(noon.kind,'sun');assert(noon.elevation>0.8);assert.equal(noon.color,'#ffd968');
+ assert.equal(dusk.kind,'sun');assert(dusk.elevation<0.3);assert.equal(dusk.color,'#ff9448');
+ assert.equal(celestial(0).kind,'moon');
+ assert.equal(dawn.kind,'sun');assert(dawn.elevation<0.35);
+ console.log('B28-T9 Celestial bodies follow the clock and the sun warms near the horizon: PASS');
+}
+{
+ assert.equal(rainIntensity(100),0);
+ assert.equal(rainIntensity(150),0);
+ assert(rainIntensity(155)>0&&rainIntensity(155)<1);
+ assert.equal(rainIntensity(165),1);
+ assert(rainIntensity(192)>0&&rainIntensity(192)<1);
+ assert.equal(rainIntensity(200),0);
+ for(let seconds=-400;seconds<=400;seconds+=0.5){
+  if(rainIntensity(seconds)>0)assert.equal(weatherAt(seconds),'rain');
+ }
+ console.log('B28-T10 Rain intensity ramps up and down within the rain window: PASS');
+}
+
+function recordLighting(){
+ const fills=[],stack=[];
+ let clips=0;
+ const rec=new Proxy({
+  globalAlpha:1,
+  measureText:text=>({width:text.length*7}),
+  createLinearGradient:()=>({addColorStop(){}}),
+  save(){stack.push({style:this.fillStyle,alpha:this.globalAlpha});},
+  restore(){const {style,alpha}=stack.pop();this.fillStyle=style;this.globalAlpha=alpha;},
+  fill(){fills.push({style:this.fillStyle,alpha:this.globalAlpha});},
+  fillRect(){fills.push({style:this.fillStyle,alpha:this.globalAlpha});},
+  clip(){clips++;},
+ },{get:(object,key)=>key in object?object[key]:()=>{},set:(object,key,value)=>(object[key]=value,true)});
+ const renderer=createRenderer({width:1280,height:800,getContext:()=>rec});
+ return {renderer,fills,get clips(){return clips;},reset(){fills.length=0;clips=0;}};
+}
+{
+ const recording=recordLighting(),{renderer,fills}=recording;
+ const billboard=seeded.billboards[0],glow=billboardGlow(billboard,0);
+ renderer.camera.x=billboard.x+billboard.width/2;
+ renderer.camera.y=billboard.y+billboard.height/2;
+ renderer.camera.clamp();
+ renderer.draw(seeded,null,0,1100,0);
+ const dryCount=fills.filter(fill=>fill.style===glow).length;
+ assert.equal(recording.clips,0);
+ recording.reset();
+ renderer.draw(seeded,null,0,1100,165);
+ const wetCount=fills.filter(fill=>fill.style===glow).length;
+ assert(wetCount>=dryCount+6);
+ assert(recording.clips>0);
+ console.log('B28-T11 Wet reflections are clipped to roads and draw only in rain: PASS');
+}
+{
+ const recording=recordLighting(),{renderer,fills}=recording;
+ const pier=seeded.spawnPoints.pier;
+ Object.assign(renderer.camera,{x:pier.x,y:pier.y,width:seeded.water.width+300});
+ renderer.draw(seeded,null,0,720,0);
+ assert(fills.some(fill=>fill.style==='#ffd968'));
+ recording.reset();
+ renderer.draw(seeded,null,0,0,0);
+ assert(fills.some(fill=>fill.style==='#e9edf5'));
+ recording.reset();
+ renderer.camera.x=seeded.roads.vertical[3].x;
+ renderer.camera.y=seeded.roads.horizontal[3].y;
+ renderer.draw(seeded,null,0,720,0);
+ assert(!fills.some(fill=>fill.style==='#ffd968'));
+ console.log('B28-T12 Celestial discs draw over water and stay out of the downtown view: PASS');
+}
+{
+ const rects=[];
+ const rec=new Proxy({
+  globalAlpha:1,
+  measureText:text=>({width:text.length*7}),
+  createLinearGradient:()=>({addColorStop(){}}),
+  save(){},restore(){},fill(){},stroke(){},clip(){},
+  fillRect(x,y,w,h){rects.push([x,y,w,h,this.fillStyle]);},
+ },{get:(object,key)=>key in object?object[key]:()=>{},set:(object,key,value)=>(object[key]=value,true)});
+ const renderer=createRenderer({width:1280,height:800,getContext:()=>rec});
+ const ix=seeded.roads.vertical[3].x,iy=seeded.roads.horizontal[3].y;
+ renderer.camera.x=ix;renderer.camera.y=iy;renderer.camera.clamp();
+ renderer.draw(seeded,null,0,720,2);
+ const zebra=rects.filter(r=>r[4]==='rgba(245,239,215,0.5)');
+ assert(zebra.length>=24,'downtown intersections gain zebra crosswalks');
+ assert(zebra.some(r=>Math.abs(r[0]-(ix-35))<1&&Math.abs(r[1]-(iy-45))<1));
+ rects.length=0;
+ renderer.camera.x=seeded.roads.vertical[0].x;renderer.camera.y=seeded.roads.horizontal[0].y;renderer.camera.clamp();
+ renderer.draw(seeded,null,0,720,2);
+ assert(!rects.some(r=>r[4]==='rgba(245,239,215,0.5)'),'no zebra markings outside downtown');
+ console.log('B29-T10 Zebra crosswalks mark the downtown intersections only: PASS');
+}
+{
+ const strokes=[];
+ const rec=new Proxy({
+  globalAlpha:1,
+  measureText:text=>({width:text.length*7}),
+  createLinearGradient:()=>({addColorStop(){}}),
+  save(){},restore(){},fill(){},fillRect(){},clip(){},
+  stroke(){strokes.push(this.strokeStyle);},
+  setLineDash(){},
+ },{get:(object,key)=>key in object?object[key]:()=>{},set:(object,key,value)=>(object[key]=value,true)});
+ const renderer=createRenderer({width:1280,height:800,getContext:()=>rec});
+ renderer.camera.x=seeded.roads.vertical[3].x;renderer.camera.y=seeded.roads.horizontal[3].y;renderer.camera.clamp();
+ renderer.draw(seeded,null,0,720,2);
+ assert(strokes.includes('rgba(255,205,90,0.32)'),'downtown streets gain worn centre lines');
+ console.log('B29-T11 Worn amber centre lines refresh the downtown streets: PASS');
+}
+{
+ const recording=recordLighting(),{renderer,fills}=recording;
+ renderer.camera.x=seeded.roads.vertical[3].x;renderer.camera.y=seeded.roads.horizontal[3].y;renderer.camera.clamp();
+ renderer.draw(seeded,null,0,720,2);
+ assert(fills.some(f=>f.style==='#ff4040')&&fills.some(f=>f.style==='#2fe07a'),'renderer paints live traffic light heads downtown');
+ console.log('B29-T12 Renderer paints the traffic lights into the world downtown: PASS');
+}
+{
+ const g={player:{cash:180,x:1,y:2},combat:{pistol:false},missions:{completed:[],currentMission:0,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:0},redLight:{inside:'3,3'}};
+ const record=writeSave(g,g.missions);
+ assert.equal(SAVE_VERSION,1);assert(record);assert(!Object.hasOwn(record,'redLight'));assert.deepEqual(loadSave(),record);
+ console.log('B29-T13 Save round-trip excludes the session-only red-light tracker and retains version 1: PASS');
+}
+{
+ const {damageOf,smokeBand,smokeRate,SMOKE_START,PLUME_START,FLAME_START}=await import('../src/damage.js');
+ const car=createCar(500,500,0,1,undefined,'parked');
+ assert.equal(damageOf(car),0);car.health=58;assert.equal(damageOf(car),42);car.health=0;assert.equal(damageOf(car),100);car.health=-20;assert.equal(damageOf(car),100);car.health=140;assert.equal(damageOf(car),0);
+ assert.equal(smokeBand(SMOKE_START-1),0);assert.equal(smokeBand(SMOKE_START),1);assert.equal(smokeBand(PLUME_START),2);assert.equal(smokeBand(FLAME_START),3);assert.equal(smokeBand(100),3);
+ assert.equal(smokeRate(0),0);assert(smokeRate(30)>0&&smokeRate(30)<smokeRate(60)&&smokeRate(60)<smokeRate(90));
+ console.log('B30-T1 Damage derives from collision health, clamps at 100, bands and rates scale monotonically: PASS');
+}
+{
+ const {damageOf}=await import('../src/damage.js');
+ const a=createCar(400,400,0,1,undefined,'player-driven');a.vx=160;
+ const b=createCar(430,400,Math.PI,1,undefined,'traffic-driven');b.vx=-160;
+ resolveCarContacts([a,b],()=>({}),0,null);
+ assert(a.health<100&&b.health<100,'collision impulses written by resolveCarContacts reduce both cars health');
+ assert(damageOf(a)>0&&damageOf(b)>0);
+ const a2=createCar(400,400,0,1,undefined,'player-driven');a2.health=2;a2.vx=260;
+ const c2=createCar(430,400,Math.PI,1,undefined,'traffic-driven');c2.vx=-260;
+ resolveCarContacts([a2,c2],()=>({}),0,null);
+ assert.equal(a2.health,0);assert.equal(damageOf(a2),100,'damage clamps at 100 when health floors at 0');
+ console.log('B30-T2 Collision damage accrues through the existing contact solver and clamps: PASS');
+}
+{
+ const {createDamageSmoke,updateDamageSmoke}=await import('../src/damage.js');
+ const run=(health,steps)=>{const s=createDamageSmoke();const c=createCar(600,600,0,1,undefined,'parked');c.health=health;for(let i=0;i<steps;i++)updateDamageSmoke(s,[c],1/60);return s;};
+ const wisp=run(58,120),plume=run(34,120),flame=run(10,120);
+ assert(wisp.emitted>0&&plume.emitted>wisp.emitted&&flame.emitted>plume.emitted,'emission volume grows with damage');
+ assert(flame.particles.some(p=>p.flame),'critical damage flickers flames');
+ assert(!plume.particles.some(p=>p.flame),'plume band stays smoke-only');
+ assert.equal(flame.particles.length,260,'the smoke pool is a fixed pre-allocated array');
+ assert(flame.particles.some(p=>p.life>0),'smoke particles stay live while a wreck burns');
+ console.log('B30-T3 Smoke pool emission is monotonic in damage and flames only at critical damage: PASS');
+}
+{
+ const {createDamageSmoke,updateDamageSmoke}=await import('../src/damage.js');
+ const run=()=>{const s=createDamageSmoke();const c=createCar(600,600,0,1,undefined,'parked');c.health=20;for(let i=0;i<90;i++)updateDamageSmoke(s,[c],1/60);return JSON.stringify(s.particles);};
+ assert.equal(run(),run(),'damage smoke is a deterministic function of its seeded rng and fixed steps');
+ console.log('B30-T4 Damage smoke replay is deterministic: PASS');
+}
+{
+ location.search='?shot=cover&seed=1';
+ const {game:coverGame}=await import('../src/main.js?scene-cover-b30');
+ let t=0;for(let index=0;index<60;index++){raf(t);t+=1000/60;}
+ assert(coverGame.damageSmoke,'cover game carries the damage smoke state');
+ assert(coverGame.police.units.some(unit=>unit.car.health<=60),'cover stages a pre-damaged police car in the pile-up');
+ assert(coverGame.damageSmoke.emitted>0,'damaged staged cars emit smoke in the cover scene');
+ assert(coverGame.damageSmoke.particles.some(p=>p.life>0),'cover frame holds live smoke particles');
+ location.search='';
+ console.log('B30-T5 Cover stages pre-damaged wrecks that smoke through the real loop: PASS');
+}
+{
+ const g={player:{cash:180,x:1,y:2},combat:{pistol:false},missions:{completed:[],currentMission:0,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:0},damageSmoke:{emitted:9}};
+ const record=writeSave(g,g.missions);
+ assert.equal(SAVE_VERSION,1);assert(record);assert(!Object.hasOwn(record,'damageSmoke'));
+ console.log('B30-T6 Save round-trip excludes the session-only damage smoke state and retains version 1: PASS');
+}
+{
+ const {createStorefronts,downtownRect,isDowntown}=await import('../src/storefronts.js');
+ const fronts=createStorefronts(seeded);
+ assert(fronts.length>=8,'downtown carries a full set of storefronts');
+ const r=downtownRect(seeded);
+ for(const s of fronts){const cx=s.x+s.width/2,cy=s.y+s.height/2;if(!s.openSign)assert(cx>=r.x0&&cx<=r.x1&&cy>=r.y0&&cy<=r.y1,'every storefront without an OPEN sign sits downtown');assert(s.panes>=2&&s.panes<=4,'each storefront has 2-4 panes');assert(typeof s.sign==='string'&&s.sign.length>0,'each storefront carries a sign');}
+ const openFronts=fronts.filter(s=>s.openSign);assert.equal(openFronts.length,1);assert.equal(openFronts[0].building,'diner');assert.equal(openFronts[0].sign,'MARLIN DINER');
+ const hospital=seeded.buildings.find(b=>b.id==='hospital');assert(hospital&&!isDowntown(seeded,hospital),'the hospital block stays undressed');
+ assert(!fronts.some(s=>s.building==='hospital'));
+ console.log('B30-T7 Storefront descriptors cover the downtown blocks plus the diner landmark: PASS');
+}
+{
+ const {createStorefronts}=await import('../src/storefronts.js');
+ assert.equal(JSON.stringify(createStorefronts(seeded)),JSON.stringify(createStorefronts(again)),'storefront descriptors are deterministic across builds');
+ assert.equal(JSON.stringify(seeded.storefronts),JSON.stringify(createStorefronts(seeded)),'createWorld attaches the same descriptors at build time');
+ console.log('B30-T8 Storefront descriptors are deterministic and attached at world build: PASS');
+}
+{
+ const {drawStorefronts}=await import('../src/storefronts.js');
+ const texts=[],fills=[];
+ const rec=new Proxy({globalAlpha:1,measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),save(){},restore(){},fill(){},fillText(t){texts.push({text:t,font:this.font});},fillRect(){fills.push(this.fillStyle);},clip(){}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ const view={x:seeded.roads.vertical[2].x,y:seeded.roads.horizontal[2].y,width:1100,height:700};
+ drawStorefronts(rec,seeded,view,0);
+ assert(texts.length>=4,'downtown signs render in the downtown view');
+ assert(texts.every(t=>t.font.startsWith('bold 11px')),'sign boards use the larger 11px board font');
+ assert(fills.includes('#8fb7bd'),'panes read as cool glass by day');
+ texts.length=0;fills.length=0;
+ drawStorefronts(rec,seeded,view,1);
+ assert(fills.includes('#ffd98c'),'panes glow warm at night');
+ console.log('B30-T9 Storefront signs and panes render downtown, glowing at dusk: PASS');
+}
+{
+ const recording=recordLighting(),{renderer,fills}=recording;
+ renderer.camera.x=seeded.roads.vertical[3].x;renderer.camera.y=seeded.roads.horizontal[3].y;renderer.camera.clamp();
+ renderer.draw(seeded,null,0,1100,2);
+ assert(fills.some(f=>f.style==='#22282c'),'renderer paints the recessed storefront bands downtown');
+ console.log('B30-T10 Renderer paints downtown storefronts into the world: PASS');
+}
+
+{
+ const {projectBlip} = await import('../src/minimap.js');
+ assert.deepEqual(projectBlip(30, 40, 84, 12), {x: 30, y: 40, clamped: false});
+ assert.deepEqual(projectBlip(300, 0, 84, 12), {x: 72, y: 0, clamped: true});
+ assert.deepEqual(projectBlip(0, 0, 84, 12), {x: 0, y: 0, clamped: false});
+ const diag = projectBlip(-90, -120, 84, 8);
+ assert.equal(diag.clamped, true); assert(Math.abs(Math.hypot(diag.x, diag.y) - 76) < 1e-9, 'radial clamp lands exactly on the limit circle');
+ console.log('B31-T1 Minimap projection maps offsets and clamps radially to the rim: PASS');
+}
+{
+ const {policeBlipColor, OBJECTIVE_BLIP_COLOR} = await import('../src/minimap.js');
+ assert.equal(policeBlipColor(0, 0), '#56c9e5'); assert.equal(policeBlipColor(0, 99.7), '#56c9e5');
+ assert.equal(policeBlipColor(3, 0), '#e5484d'); assert.equal(policeBlipColor(3, 0.4), '#e5484d');
+ assert.equal(policeBlipColor(3, 0.6), '#56c9e5'); assert.equal(policeBlipColor(3, 1.1), '#e5484d');
+ assert.equal(OBJECTIVE_BLIP_COLOR, '#ffd94d');
+ console.log('B31-T2 Police blips flash red/blue on the game clock only while wanted: PASS');
+}
+{
+ const {shopMarkers} = await import('../src/minimap.js');
+ const {martShops, dinerShops} = await import('../src/robbery.js');
+ const {sprayGarages} = await import('../src/spray.js');
+ const markers = shopMarkers(seeded);
+ const sprays = sprayGarages(seeded), mart = martShops(seeded), diner = dinerShops(seeded);
+ assert.equal(markers.filter(m => m.kind === 'spray').length, sprays.length); assert(sprays.length >= 1);
+ assert.equal(markers.filter(m => m.kind === 'mart').length, 1); assert.equal(markers.find(m => m.kind === 'mart').x, mart[0].x); assert.equal(markers.find(m => m.kind === 'mart').y, mart[0].y);
+ assert.equal(markers.filter(m => m.kind === 'diner').length, 1); assert.equal(markers.find(m => m.kind === 'diner').x, diner[0].x); assert.equal(markers.find(m => m.kind === 'diner').y, diner[0].y);
+ assert(markers.every(m => Number.isFinite(m.x) && Number.isFinite(m.y) && typeof m.color === 'string'));
+ console.log('B31-T3 Shop markers cover spray garages, CORAL MART and the diner at their real positions: PASS');
+}
+{
+ const {minimapRect} = await import('../src/minimap.js');
+ const r = minimapRect(1280, 720);
+ assert.deepEqual(r, {x: 24, y: 528, width: 168, height: 168});
+ const panels = [
+  {x: 20, y: 20, width: 208, height: 96},
+  {x: 20, y: 124, width: 208, height: 150},
+  {x: 1050, y: 20, width: 210, height: 73},
+  {x: 360, y: 22, width: 560, height: 66},
+  {x: 1050, y: 104, width: 210, height: 76},
+  {x: 1050, y: 188, width: 210, height: 52},
+  {x: 1046, y: 604, width: 214, height: 92},
+  {x: 330, y: 358, width: 620, height: 110},
+ ];
+ const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+ for (const p of panels) assert(!overlaps(r, p), 'minimap rect clears every staged-frame panel');
+ console.log('B31-T4 Minimap panel rect collides with no HUD panel in the staged frames: PASS');
+}
+{
+ const {drawMinimap} = await import('../src/minimap.js');
+ const fills = [];
+ const rec = new Proxy({globalAlpha: 1, measureText: t => ({width: t.length * 7}), createLinearGradient: () => ({addColorStop() {}}), save() {}, restore() {}, fill() { fills.push(this.fillStyle); }, fillRect() { fills.push(this.fillStyle); }, strokeRect() {}, fillText() {}, clip() {}}, {get: (o, k) => k in o ? o[k] : (...a) => {}, set: (o, k, v) => (o[k] = v, true)});
+ const px = seeded.spawnPoints.diner.x, py = seeded.spawnPoints.diner.y;
+ const fake = {player: {x: px, y: py, facing: 0}, minimap: {}, objective: {position: {x: px + 4000, y: py}}, wanted: {stars: 3}, playSeconds: 0, police: {units: [{car: {x: px + 120, y: py + 40}}], heli: null}, vehicle: null, world: seeded};
+ drawMinimap(rec, fake, 1280, 720);
+ assert(fills.includes('#e5484d'), 'wanted police blip flashes red at playSeconds 0');
+ assert(fills.includes('#ffd94d'), 'objective diamond is gold');
+ assert(fills.includes('#2fd4c4'), 'spray shop square renders');
+ assert(fills.includes('#fa8c55'), 'diner shop square renders');
+ fills.length = 0; fake.playSeconds = 0.6;
+ drawMinimap(rec, fake, 1280, 720);
+ assert(fills.includes('#56c9e5') && !fills.includes('#e5484d'), 'flash phase flips to blue half a second later');
+ console.log('B31-T5 Minimap draws flashing police, gold objective and shop squares from live state: PASS');
+}
+{
+ const {createStorefronts, STOREFRONT_AWNINGS} = await import('../src/storefronts.js');
+ const fronts = createStorefronts(seeded);
+ const diner = fronts.find(s => s.openSign);
+ const building = seeded.buildings.find(b => b.id === 'diner');
+ assert(diner, 'the diner receives a storefront descriptor');
+ assert.equal(fronts.filter(s => s.openSign).length, 1, 'exactly one OPEN-sign storefront exists');
+ assert.equal(diner.building, 'diner'); assert.equal(diner.sign, 'MARLIN DINER');
+ assert.equal(diner.x, building.x); assert.equal(diner.y, building.y);
+ assert(diner.panes >= 2 && diner.panes <= 4); assert(STOREFRONT_AWNINGS.includes(diner.awning));
+ console.log('B31-T6 The Marlin Diner gets a storefront descriptor with an OPEN sign: PASS');
+}
+{
+ const {drawStorefronts} = await import('../src/storefronts.js');
+ const texts = [], fills = [];
+ const rec = new Proxy({globalAlpha: 1, measureText: t => ({width: t.length * 7}), createLinearGradient: () => ({addColorStop() {}}), save() {}, restore() {}, fill() {}, fillText(t) { texts.push(t); }, fillRect() { fills.push(this.fillStyle); }, clip() {}}, {get: (o, k) => k in o ? o[k] : (...a) => {}, set: (o, k, v) => (o[k] = v, true)});
+ const view = {x: 1150, y: 1900, width: 800, height: 500};
+ drawStorefronts(rec, seeded, view, 1);
+ assert(texts.includes('MARLIN DINER'), 'diner sign board renders');
+ assert(texts.includes('OPEN'), 'OPEN neon sign renders');
+ assert(fills.includes('#ffd98c'), 'diner panes glow warm at dusk');
+ assert(fills.includes('#ff6b9d'), 'OPEN sign halo washes at dusk');
+ texts.length = 0; fills.length = 0;
+ drawStorefronts(rec, seeded, view, 0);
+ assert(texts.includes('OPEN'), 'OPEN sign is steady by day');
+ assert(fills.includes('#8fb7bd'), 'diner panes read as cool glass by day');
+ console.log('B31-T7 Diner frontage draws its sign, glowing panes and OPEN neon: PASS');
+}
+{
+ location.search = '?shot=mission';
+ const shot = await import('../src/main.js?shot-mission-b31');
+ const staging = shot.game.missionStaging;
+ assert(staging, 'mission scene records its staging');
+ assert.equal(staging.cars.length, 2);
+ assert.deepEqual(staging.cars.map(c => [c.x, c.y]), [[1862, 2172], [1940, 2172]]);
+ assert(staging.cars.every(c => c.driver === 'parked' && c.speed === 0));
+ assert.equal(staging.peds.length, 3);
+ assert.deepEqual(staging.peds.map(p => [p.x, p.y]), [[1408, 2165], [1440, 2165], [1560, 2165]]);
+ assert.equal(staging.peds[0].facing, 0); assert.equal(staging.peds[1].facing, Math.PI);
+ location.search = '';
+ const {writeSave} = await import('../src/save.js');
+ const carrier = {player: {cash: 180, x: 1, y: 2}, combat: {pistol: false}, missions: {completed: [], currentMission: 0, collectibles: [], bestTimes: {}, taxiFares: 0, totalEarned: 0}, missionStaging: staging};
+ const record = writeSave(carrier, carrier.missions);
+ assert(record && !Object.hasOwn(record, 'missionStaging'), 'staging bookkeeping never reaches the save');
+ assert(!game.missionStaging, 'non-mission scenes carry no mission staging');
+ console.log('B31-T8 Mission scene stages two parked cars and a sidewalk conversation at the diner: PASS');
+}
+let b32Cover,b32CoverSteps=0,b32CoverFrameTime=0;
+{
+ location.search='?shot=cover&seed=1';
+ const {game:staged}=await import('../src/main.js?b32-cover');
+ b32Cover=staged;
+ while(!staged.news.banner&&b32CoverSteps<400){raf(b32CoverFrameTime);b32CoverFrameTime+=1000/60;b32CoverSteps++;}
+ assert(staged.news.banner,`cover banner must appear within 400 steps (steps=${b32CoverSteps})`);
+ raf(b32CoverFrameTime);b32CoverFrameTime+=1000/60;b32CoverSteps++;
+ assert.equal(staged.news.banner.t,.5);
+ console.log('B32-T1 Cover pins the BREAKING banner at slide-complete from its first frame: PASS');
+}
+{
+ const staged=b32Cover;
+ while(b32CoverSteps<180){raf(b32CoverFrameTime);b32CoverFrameTime+=1000/60;b32CoverSteps++;}
+ assert(Array.isArray(staged.coverStaging),'coverStaging must be an array');
+ assert.equal(staged.coverStaging.length,9);
+ for(const s of staged.coverStaging){
+  assert(Math.abs(s.car.x-(staged.vehicle.x+s.dx))<.01,`cover car x=${s.car.x}, expected=${staged.vehicle.x+s.dx}`);
+  assert(Math.abs(s.car.y-(staged.vehicle.y+s.dy))<.01,`cover car y=${s.car.y}, expected=${staged.vehicle.y+s.dy}`);
+  assert.equal(s.car.health,s.health);
+  assert.equal(s.car.speed,0);
+ }
+ console.log('B32-T2 Cover pins the staged pile-up to its placed composition: PASS');
+}
+{
+ location.search='?shot=chase&seed=1';
+ const {game:staged2}=await import('../src/main.js?b32-chase');
+ let frameTime=0,steps=0;
+ while(!staged2.news.banner&&steps<400){raf(frameTime);frameTime+=1000/60;steps++;}
+ assert(staged2.news.banner,`chase banner must appear within 400 steps (steps=${steps})`);
+ raf(frameTime);frameTime+=1000/60;steps++;
+ assert(staged2.news.banner.t<.5,`chase banner must progress naturally (t=${staged2.news.banner.t})`);
+ assert.equal(staged2.coverStaging,undefined);
+ while(steps<180){raf(frameTime);frameTime+=1000/60;steps++;}
+ const speeds=staged2.police.units.map(unit=>unit.car.speed);
+ assert(speeds.filter(speed=>speed>0).length>=2,`at least two chase police cars must be driving (speeds=${JSON.stringify(speeds)})`);
+ location.search='';
+ console.log('B32-T3 Chase keeps natural banner slide and unpinned police AI: PASS');
+}
+let b32Foot;
+{
+ const {lightState}=await import('../src/lights.js');
+ location.search='?shot=foot&seed=1';
+ const {game:staged}=await import('../src/main.js?b32-foot');
+ b32Foot=staged;
+ let frameTime=0;
+ for(let step=0;step<180;step++){raf(frameTime);frameTime+=1000/60;}
+ assert(staged.footStaging,'foot scene records its staging');
+ assert.equal(lightState('NS',staged.playSeconds),'red');
+ const {queue}=staged.footStaging;
+ assert.equal(queue.length,3);
+ const along=queue.map((car,index)=>{
+  assert.equal(car.driver,'traffic-driven');
+  assert(car.route&&car.route.col===4&&car.route.row===3&&car.route.direction===1,`queue[${index}] route=${JSON.stringify(car.route)}`);
+  assert(Number.isFinite(car.x)&&Number.isFinite(car.y),`queue[${index}] position=(${car.x},${car.y})`);
+  assert(car.speed<6,`queue[${index}] speed=${car.speed}, expected <6`);
+  return car.ty-car.y;
+ });
+ assert(along[0]>=50&&along[0]<=85,`front car along=${along[0]}, expected 50 to 85`);
+ for(let index=1;index<along.length;index++){
+  assert(along[index]>along[index-1]&&along[index]-along[index-1]>=38,`queue along=${JSON.stringify(along)}, expected increasing distances with gaps >=38`);
+ }
+ console.log('B32-T4 Foot stages a three-car queue held by the real red light: PASS');
+}
+{
+ const staged=b32Foot;
+ const {crossers,waiter}=staged.footStaging;
+ assert.equal(crossers.length,2);
+ for(const ped of crossers){
+  assert(ped.x>=2129&&ped.x<=2208&&ped.y>=1489&&ped.y<=1507,`crosser position=(${ped.x},${ped.y}), expected within the south-arm zebra band`);
+ }
+ assert(waiter.x===2224&&waiter.y===1518,`waiter position=(${waiter.x},${waiter.y}), expected (2224,1518)`);
+ assert(waiter.x>2164+55||waiter.y>1462+55,`waiter position=(${waiter.x},${waiter.y}), expected outside the road bands`);
+ console.log('B32-T5 Foot stages two pedestrians mid-crossing on the zebra and one waiting: PASS');
+}
+{
+ location.search='?shot=mission&seed=1';
+ const {game:stagedM}=await import('../src/main.js?b32-mission');
+ assert.equal(stagedM.footStaging,undefined);
+ location.search='';
+ const {player,combat,missions,footStaging}=b32Foot;
+ const carrier={player:{cash:player.cash,x:player.x,y:player.y},combat:{pistol:combat.pistol},missions:{completed:missions.completed,currentMission:missions.currentMission,collectibles:missions.collectibles,bestTimes:missions.bestTimes,taxiFares:missions.taxiFares,totalEarned:missions.totalEarned},footStaging};
+ const record=writeSave(carrier,carrier.missions);
+ assert.equal(SAVE_VERSION,1);
+ assert(record&&!Object.hasOwn(record,'footStaging'),'staging bookkeeping never reaches the save');
+ console.log('B32-T6 Living-city staging is foot-only and excluded from the save: PASS');
+}
+
+// Brief-33 item 1: the chase scene is re-pinned to the night clock (1300) so the
+// lighting stack reads at full strength; every other scene keeps its pin.
+{
+ location.search='?shot=chase&seed=1';
+ const {game:nightChase}=await import('../src/main.js?scene-chase-b33');
+ let frameTime=0;
+ for(let index=0;index<180;index++){raf(frameTime);frameTime+=1000/60;}
+ assert.equal(nightChase.clockMinutes,1300);
+ assert.equal(headlightLevel(nightChase.clockMinutes),1);
+ console.log('B33-T1 Chase scene pins the 1300 night clock with full headlight level: PASS');
+ assert.equal(lampPoolAlpha(headlightLevel(nightChase.clockMinutes)),0.16);
+ assert.equal(signHaloAlpha(headlightLevel(nightChase.clockMinutes)),0.4);
+ assert.equal(heliSpotAlpha(headlightLevel(nightChase.clockMinutes)),1);
+ console.log('B33-T2 At the chase night clock the lamp-pool, sign-halo and heli-spot alphas are at their night values: PASS');
+ const {SAVE_VERSION}=await import('../src/save.js');
+ assert.equal(SAVE_VERSION,1);
+ console.log('B33-T3 Save version stays 1 for the night-chase re-pin: PASS');
+}
+
+// Brief-33 item 2: the chase scene runs at 5 stars, so updatePolice's own rules
+// spawn the roadblock (with its derived spike strip) and the helicopter.
+{
+ location.search='?shot=chase&seed=1';
+ const {game:rbChase}=await import('../src/main.js?scene-chase-b33rb');
+ const startX=rbChase.vehicle.x;
+ let frameTime=0;
+ for(let index=0;index<180;index++){raf(frameTime);frameTime+=1000/60;}
+ assert.equal(rbChase.wanted.stars,5);
+ const rb=rbChase.police.roadblock;
+ assert(rb,'chase spawns a roadblock through the real >=4-star rule');
+ assert.equal(rb.cars.length,2);assert(rb.cars.every(car=>car.police));
+ const strip=spikeStrip(rb);
+ assert(strip);assert.equal(strip.half,34);
+ const {SPIKE_SPEED,SPIKE_CAP,SPIKE_TIME,SPIKE_HALF}=await import('../src/spikes.js');
+ assert.equal(SPIKE_SPEED,60);assert.equal(SPIKE_CAP,60);assert.equal(SPIKE_TIME,6);assert.equal(SPIKE_HALF,34);
+ console.log('B33-T4 Chase at 5 stars spawns a real roadblock with the derived spike strip, spike constants unchanged: PASS');
+ assert(rb.x>startX+400,'roadblock placed ahead of the player by the spawn rule');
+ assert(rbChase.police.heli,'chase spawns the helicopter at 5 stars');
+ const rows=responseRows(rbChase);
+ assert(rows.some(row=>row.type==='ROADBLOCK'));
+ assert(rows.some(row=>row.type==='HELI'));
+ console.log('B33-T5 Roadblock sits ahead on the player road and the CBPD panel carries BLOCK and AIR-1 rows: PASS');
+ for(const other of ['mission','foot']){
+  location.search=`?shot=${other}&seed=1`;
+  const {game:otherGame}=await import(`../src/main.js?scene-${other}-b33rb`);
+  let t=0;
+  for(let index=0;index<180;index++){raf(t);t+=1000/60;}
+  assert.equal(otherGame.police.roadblock,null);
+ }
+ console.log('B33-T6 Mission and foot scenes stage no roadblock: PASS');
+}
+
+// Brief-34 item 1: the pedestrian spawn distribution is weighted toward
+// downtown (the lit 3x3, roads 2..4) — total count and the per-ped rng
+// draw count are unchanged, only the distribution moves.
+{
+ const {createPedestrians:freshPeds}=await import('../src/pedestrians.js?b34-density');
+ const {downtownRect}=await import('../src/storefronts.js');
+ const {createHash}=await import('node:crypto');
+ const rect=downtownRect(seeded);
+ const pool=freshPeds(seeded,{x:0,y:0});
+ assert.equal(pool.people.length,96);
+ const downtown=pool.people.filter(p=>p.x>=rect.x0&&p.x<=rect.x1&&p.y>=rect.y0&&p.y<=rect.y1).length;
+ assert.equal(downtown,44);
+ assert(downtown>=36,'downtown spawn count must be at least 1.8x the pre-round baseline of 20 (brief-34)');
+ const appearance=pool.people.map(p=>[p.shirt,p.skin,p.pants,p.pause].join('|')).join(';');
+ assert.equal(createHash('sha256').update(appearance).digest('hex'),'e21e315556921a3b4d2d691ded44231a349880232cadeacfc798402deea0a9c9','per-ped rng draw count unchanged: the appearance stream is identical to the pre-round baseline');
+ console.log('B34-T1 Downtown spawn weighting: 96 peds, downtown share up from the baseline of 20, draw count unchanged: PASS');
+}
+// Brief-34 item 2: a Comet Chopper reads in two staged frames — parked at
+// the Marlin Diner in the mission scene, and at the front of the foot
+// scene's red-light queue. Both go through the real vehicle systems.
+{
+ location.search='?shot=mission&seed=1';
+ const {game:staged}=await import('../src/main.js?b34-mission');
+ const bike=staged.missionStaging.bike;
+ assert(bike,'mission scene stages a bike at the diner');
+ assert.equal(bike.model.name,'Comet Chopper');
+ assert.equal(bike.driver,'parked');
+ assert.equal(bike.speed,0);
+ assert.deepEqual([bike.x,bike.y],[1784,2172]);
+ assert.equal(staged.missionStaging.cars.length,2,'the two staged diner cars are untouched');
+ location.search='';
+ console.log('B34-T2 Mission scene parks a Comet Chopper at the Marlin Diner: PASS');
+}
+{
+ const {queue}=b32Foot.footStaging;
+ assert.equal(queue.length,3);
+ assert.equal(queue[0].model.name,'Comet Chopper','the front of the red-light queue is the bike');
+ assert.equal(queue.filter(car=>car.model.name==='Comet Chopper').length,1,'exactly one bike in the queue');
+ assert(queue.every(car=>car.driver==='traffic-driven'&&car.speed<6),'the queue stop behaviour is intact with the bike in front');
+ console.log('B34-T3 Foot red-light queue is fronted by a Comet Chopper: PASS');
+}
+
+// Brief-35 item 1: Coral Bay Radio grows a third station (talk), the cycle
+// gains an OFF state, and the HUD line draws on foot as well as in a car,
+// stepping above the dialogue box when one is open.
+{
+ const freshA=await import('../src/radio.js?b35-a'),freshB=await import('../src/radio.js?b35-b');
+ for(let i=0;i<3;i++)assert.deepEqual(freshA.stationNow(1234,i),freshB.stationNow(1234,i));
+ for(const st of freshA.RADIO_STATIONS){assert(st.name&&st.freq&&st.tracks.length>=4);assert(st.tracks.every(t=>t.title&&t.artist));}
+ console.log('B35-T1 Three stations with frequencies and playlists, deterministic across fresh imports: PASS');
+}
+{
+ const {drawHUD}=await import('../src/hud.js');
+ const texts=[],rects=[];
+ const rec=new Proxy({save(){},restore(){},setTransform(){},roundRect(x,y,w,h){rects.push([x,y,w,h]);},fillText(text){texts.push(text);},measureText:text=>({width:text.length*7})},{get:(object,key)=>key in object?object[key]:(()=>{}),set:(object,key,value)=>(object[key]=value,true)});
+ const base={world:seeded,player:{name:'Dario Venn',x:0,y:0,health:100,maxHealth:100,armour:0,maxArmour:100,cash:180},minimap:{},objective:{text:'Meet Lena at the Marlin Diner · The Envelope',position:null},width:1280,height:800,pixelRatio:1,playSeconds:0,news:{banner:null,ticker:null},vehicle:null,combat:null,radio:{station:2},missions:null};
+ drawHUD(rec,base);
+ assert(texts.some(t=>t.includes('BAY TALK 90.7')),'on-foot HUD draws the radio line');
+ const radioRect=rects.find(r=>r[2]===510&&r[3]===30);assert(radioRect);assert.equal(radioRect[1],800-272);
+ texts.length=0;rects.length=0;
+ base.missions={dialogue:{speaker:'Lena',lines:['A courier has an envelope by General. Bring it straight back. And take this.'],index:0}};
+ drawHUD(rec,base);
+ assert(texts.some(t=>t.includes('BAY TALK 90.7')),'radio line still draws while dialogue is open');
+ const radioRect2=rects.find(r=>r[2]===510&&r[3]===30),dialogueRect=rects.find(r=>r[2]===620);
+ assert(radioRect2&&dialogueRect);assert.equal(radioRect2[1],96);assert(radioRect2[1]+30<=dialogueRect[1],'radio panel clears the dialogue box');
+ texts.length=0;rects.length=0;
+ base.news={banner:{headline:'EXPLOSION ROCKS DOWNTOWN',t:.2,dur:5},ticker:null};
+ drawHUD(rec,base);
+ const radioRect3=rects.find(r=>r[2]===510&&r[3]===30);
+ assert(radioRect3);assert.equal(radioRect3[1],dialogueRect[1]-38);assert(radioRect3[1]+30<=dialogueRect[1],'with a banner up the radio panel falls back above the dialogue box');
+ console.log('B35-T2 Radio line draws on foot, takes the banner slot over dialogue, and falls back when a banner is up: PASS');
+}
+{
+ const {writeSave,SAVE_VERSION}=await import('../src/save.js');
+ const carrier={player:{cash:180,x:1,y:2},combat:{pistol:false},missions:{completed:[],currentMission:0,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:0},radio:{station:2}};
+ const record=writeSave(carrier,carrier.missions);
+ assert(record&&!Object.hasOwn(record,'radio'),'radio state never reaches the save');
+ assert.equal(SAVE_VERSION,1);
+ console.log('B35-T3 Radio is session-only and the save stays version 1: PASS');
+}
+
+// Brief-35 item 2: the mission frame opens 'The Envelope' (mission index 2)
+// through the real mission system — a save-shaped two-missions-complete
+// state plus free play's own E-at-the-diner trigger into begin(2).
+{
+ location.search='?shot=mission';
+ const shot=await import('../src/main.js?shot-mission-b35');
+ let frameTime=0;for(let index=0;index<180;index++){raf(frameTime);frameTime+=1000/60;}
+ const s=shot.game.missions;
+ assert.deepEqual(s.completed,[0,1]);assert.equal(s.currentMission,2);assert.equal(s.activity,'mission');assert.equal(s.phase,'start');
+ assert(s.dialogue);assert.equal(s.dialogue.speaker,'Lena');
+ assert.equal(s.dialogue.lines[0],'A courier has an envelope by General. Bring it straight back. And take this.');
+ assert.equal(s.objective,'Meet Lena at the Marlin Diner · The Envelope');
+ assert.deepEqual([s.marker.x,s.marker.y],[shot.game.world.spawnPoints.diner.x,shot.game.world.spawnPoints.diner.y]);
+ assert.equal(shot.game.combat.pistol,true);
+ assert.equal(shot.game.objective.text,s.objective);
+ assert.equal(shot.game.radio.station,0);
+ location.search='';
+ console.log('B35-T4 Mission scene opens The Envelope through the real mission path: PASS');
+}
+{
+ const {writeSave,SAVE_VERSION}=await import('../src/save.js');
+ const carrier={player:{cash:180,x:1,y:2},combat:{pistol:true},missions:{completed:[0,1],currentMission:2,collectibles:[],bestTimes:{},taxiFares:0,totalEarned:1550}};
+ const record=writeSave(carrier,carrier.missions);
+ assert(record);assert.deepEqual(record.completed,[0,1]);assert.equal(record.currentMission,2);assert(!Object.hasOwn(record,'dialogue')&&!Object.hasOwn(record,'activity'));
+ assert.equal(SAVE_VERSION,1);
+ console.log('B35-T5 The staged mission state round-trips as an ordinary two-mission save: PASS');
+}
+
+{
+ const {execFileSync}=await import('node:child_process');
+ const {mkdtempSync,readFileSync,rmSync}=await import('node:fs');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {fileURLToPath}=await import('node:url');
+ const repoRoot=fileURLToPath(new URL('../../',import.meta.url));
+ const outDir=mkdtempSync(join(tmpdir(),'cbh-dossier-'));
+ try{
+  execFileSync(process.execPath,['main.ts'],{cwd:repoRoot,env:{...process.env,MAKEFUN_OUTPUT_DIR:outDir},stdio:'pipe'});
+  const dossier=JSON.parse(readFileSync(join(outDir,'dossier.json'),'utf8'));
+  assert.equal(dossier.schema,'makefun/dossier/v1');
+  assert.equal(dossier.images.length,4);
+  const text=dossier.text;
+  assert(text.startsWith('## Game'),'dossier text opens with the Game block');
+  assert(Buffer.byteLength(text,'utf8')<=163840,'dossier text stays within the cap');
+  const htmlAt=text.indexOf('### game/index.html');
+  const mainAt=text.indexOf('### game/src/main.js');
+  assert(htmlAt>=0&&mainAt>htmlAt,'index.html leads the dossier sources, main.js follows');
+  const presentation=text.slice(htmlAt,mainAt);
+  assert(presentation.includes('CORAL BAY HEAT — an original open-world crime game'),'index.html carries the presentation block');
+  const probes=['six-mission story','Wanted 0-5 stars','helicopter','roadblocks','spike strips','working signals','10 driveable vehicle models','transit bus','Comet Chopper','Taxi fares','street-race','rampages','courier runs','fishing','12 hidden beach umbrellas','five photo spots','can be robbed','respray garage','fuel system','car alarms','drift chains','STREET REP','Coral Bay Radio','BREAKING news banner','live minimap','fireworks'];
+  const named=probes.filter(p=>presentation.includes(p));
+  assert(named.length>=12,`presentation names at least 12 real systems (named ${named.length})`);
+  const mainHead=text.slice(mainAt,mainAt+700);
+  assert(mainHead.includes("CORAL BAY HEAT — the game's entry module"),'main.js opens the dossier module walk with its header');
+  console.log('B36-T1 Dossier presents the game at its head: index.html block + main.js header, systems named: PASS');
+ } finally { rmSync(outDir,{recursive:true,force:true}); }
+}
+
+{
+ // Brief-37 item 2: the title screen carries the tagline, the full real
+ // control set and a working Enter-to-start on the real New Game path.
+ const {readFileSync}=await import('node:fs');
+ const {join}=await import('node:path');
+ const {fileURLToPath}=await import('node:url');
+ const repoRoot=fileURLToPath(new URL('../../',import.meta.url));
+ const html=readFileSync(join(repoRoot,'game/index.html'),'utf8');
+ assert(html.includes('Six missions. One bay. Every siren earned.'),'menu shows the tagline under the title');
+ assert(html.includes('PRESS ENTER TO START'),'menu advertises Enter to start');
+ assert(html.includes('<b>T</b> Radio')&&html.includes('<b>R</b> Reload')&&html.includes('<b>C</b> Horn'),'menu controls name radio, reload and horn');
+ location.search='';
+ const menuGame=await import('../src/main.js?b37-menu');
+ assert.equal(menuGame.game.state,'menu','a fresh load waits at the title screen');
+ key('Enter');
+ assert.equal(menuGame.game.state,'playing','Enter starts the game from the title screen');
+ console.log('B37-T2 Title screen: tagline, full controls, Enter starts the real New Game path: PASS');
+}
+
+{
+ const {execFileSync}=await import('node:child_process');
+ const {mkdtempSync,readFileSync,rmSync}=await import('node:fs');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {fileURLToPath}=await import('node:url');
+ const repoRoot=fileURLToPath(new URL('../../',import.meta.url));
+ const outDir=mkdtempSync(join(tmpdir(),'cbh-dossier37-'));
+ try{
+  execFileSync(process.execPath,['main.ts'],{cwd:repoRoot,env:{...process.env,MAKEFUN_OUTPUT_DIR:outDir},stdio:'pipe'});
+  const dossier=JSON.parse(readFileSync(join(outDir,'dossier.json'),'utf8'));
+  const text=dossier.text;
+  assert(Buffer.byteLength(text,'utf8')<=163840,'dossier text stays within the cap');
+  // Brief-37 item 1: main.js's import order steers buildDossier's depth-first
+  // walk so the high-signal modules land inside the text cap, whole.
+  const keepers=['missions','traffic','radio','minimap','damage','news','police','wanted'];
+  const segments=text.split('### game/');
+  const sectionOf=(name)=>segments.find(s=>s.startsWith(`src/${name}.js (`));
+  for(const name of keepers){
+   const section=sectionOf(name);
+   assert(section,`dossier text contains a section for ${name}.js`);
+   assert(!section.includes('lines not shown'),`${name}.js is shown whole, not truncated`);
+  }
+  const markers={missions:'createMissionState',traffic:'createTraffic',radio:'CORAL FM',minimap:'drawMinimap',damage:'createDamageSmoke',news:'createNews',police:'createPolice',wanted:'createWanted'};
+  for(const [name,marker] of Object.entries(markers)) assert(sectionOf(name).includes(marker),`${name}.js section carries its marker ${marker}`);
+  const tails={missions:'Taxi dispatch: pick up the flagged passenger',traffic:'traffic.timer=.6',radio:'export function cycleRadio',minimap:"fillText('N', cx, cy - radius + 13)",damage:'export function drawDamageSmoke(ctx, state)'};
+  for(const [name,tail] of Object.entries(tails)) assert(sectionOf(name).includes(tail),`${name}.js section reaches its tail (${tail})`);
+  console.log('B37-T1 Dossier walk order puts the high-signal modules inside the cap, whole: PASS');
+ } finally { rmSync(outDir,{recursive:true,force:true}); }
+}
+
+{
+ // Brief-38 item 1: the roadblock spike strip gains hazard edge stripes,
+ // brighter studs and a top-down warning cone at each end — render only;
+ // the 16-wide base band, chevrons and SPIKE_* geometry are unchanged.
+ const {drawSpikes,SPIKE_HALF}=await import('../src/spikes.js');
+ const makeCtx=(rects,arcs)=>{let cur=null;return {save(){},restore(){},translate(){},rotate(){},beginPath(){},stroke(){},moveTo(){},lineTo(){},fill(){},
+  set fillStyle(v){cur=v;},get fillStyle(){return cur;},
+  fillRect(x,y,w,h){rects.push({x,y,w,h,style:cur});},
+  arc(x,y,r){arcs.push({x,y,r,style:cur});}};};
+ const rects=[],arcs=[];
+ drawSpikes(makeCtx(rects,arcs),{roadblock:{x:100,y:100,dirX:1,dirY:0}},0);
+ assert(rects.some(f=>f.w===16&&f.h===SPIKE_HALF*2),'base band still drawn 16 wide');
+ const hazard=rects.filter(f=>f.style==='#ffd37b'&&(f.x===-12||f.x===8));
+ assert(hazard.length>=8,'hazard-yellow edge segments line both edges of the strip');
+ assert(rects.some(f=>f.style==='#ffd37b'&&f.x===-12)&&rects.some(f=>f.style==='#ffd37b'&&f.x===8),'hazard edges on both sides');
+ assert(arcs.some(a=>a.r===3),'glint studs drawn at the larger radius');
+ const cones=arcs.filter(a=>a.r===5.5&&a.style==='#e8762d');
+ assert.equal(cones.length,2,'one warning cone at each end of the strip');
+ assert(cones.some(a=>a.y===-(SPIKE_HALF+12))&&cones.some(a=>a.y===SPIKE_HALF+12),'cones sit just beyond the strip ends');
+ const rects2=[],arcs2=[];
+ drawSpikes(makeCtx(rects2,arcs2),{roadblock:null},0);
+ assert.equal(rects2.length+arcs2.length,0,'no roadblock, no strip and no cones');
+ console.log('B38-T1 Roadblock strip gains hazard edges, brighter studs and end cones; geometry unchanged: PASS');
+}
+{
+ // Brief-38 item 2: the BUSTED screen is driven through the real
+ // finishOutcome path (arrest >= 1 in the real frame loop) and its HUD
+ // overlay shows the treated headline plus the real state at capture.
+ location.search='';
+ const {game:g}=await import('../src/main.js?b38-busted');
+ element('new-game').onclick();frame();
+ assert.equal(g.state,'playing');
+ g.player.cash=1000;g.rep.xp=350;g.missions.completed=[0,1];g.missions.activity='mission';
+ const {setWanted}=await import('../src/wanted.js');
+ setWanted(g.wanted,4,g.player);
+ const {spawnPolice}=await import('../src/police.js');
+ const officer=spawnPolice(g.police,g.player.x+10,g.player.y,0,false);
+ officer.onFoot=true;officer.x=g.player.x+10;officer.y=g.player.y;officer.fireTimer=99;
+ g.police.arrest=1;
+ frame();
+ assert.equal(g.state,'busted');
+ assert(g.outcome&&g.outcome.kind==='busted');
+ assert.equal(g.outcome.bill,200,'fine is 15% of cash + $50, capped at cash');
+ assert.equal(g.player.cash,800);
+ assert.equal(g.outcome.stars,4);assert.equal(g.outcome.cash,800);assert.equal(g.outcome.repLevel,3);assert.equal(g.outcome.jobs,2);assert.equal(g.outcome.missionBlown,true);
+ const {drawHUD}=await import('../src/hud.js');
+ const texts=[];
+ const rctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),fillText(t){texts.push(String(t));},strokeText(t){texts.push(String(t));}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ drawHUD(rctx,g);
+ assert(texts.includes('BUSTED'),'treated BUSTED headline drawn');
+ assert(texts.some(t=>t.includes('Booked by the Coral Bay PD')),'CBPD sub-line drawn');
+ assert(texts.includes('Police fine: $200'),'real fine shown');
+ assert(texts.some(t=>t.includes('CASH $800')&&t.includes('STREET REP LV 3')&&t.includes('JOBS 2/6')&&t.includes('WANTED ★★★★')),'stats line carries the driven state');
+ assert(texts.some(t=>t.includes('police station')&&t.includes('heat cleared')&&t.includes('job is blown')),'consequence states the station release and the blown job');
+ console.log('B38-T2 Busted screen: treated headline, CBPD line, real fine, stats and consequence from driven state: PASS');
+}
+{
+ // Brief-38 item 2: the WASTED screen, driven through the real
+ // finishOutcome path (health <= 0), shows the hospital bill, the
+ // post-bill cash and no WANTED segment at zero stars.
+ location.search='';
+ const {game:g}=await import('../src/main.js?b38-wasted');
+ element('new-game').onclick();frame();
+ assert.equal(g.state,'playing');
+ g.player.cash=500;g.rep.xp=0;
+ g.player.health=0;
+ frame();
+ assert.equal(g.state,'wasted');
+ assert(g.outcome&&g.outcome.kind==='wasted');
+ assert.equal(g.outcome.bill,125,'hospital bill is 10% of cash + $75, capped at cash');
+ assert.equal(g.player.cash,375);
+ assert.equal(g.outcome.stars,0);assert.equal(g.outcome.missionBlown,false);
+ const {drawHUD}=await import('../src/hud.js');
+ const texts=[];
+ const rctx=new Proxy({measureText:t=>({width:t.length*7}),createLinearGradient:()=>({addColorStop(){}}),fillText(t){texts.push(String(t));},strokeText(t){texts.push(String(t));}},{get:(o,k)=>k in o?o[k]:(...a)=>{},set:(o,k,v)=>(o[k]=v,true)});
+ drawHUD(rctx,g);
+ assert(texts.includes('WASTED'),'treated WASTED headline drawn');
+ assert(texts.some(t=>t.includes('Coral Bay General patches you up')),'hospital sub-line drawn');
+ assert(texts.includes('Hospital bill: $125'),'real bill shown');
+ assert(texts.some(t=>t.includes('CASH $375')&&t.includes('STREET REP LV 1')&&t.includes('JOBS 0/6')),'stats line carries the driven state');
+ assert(!texts.some(t=>t.includes('WANTED')),'no WANTED segment at zero stars');
+ assert(texts.some(t=>t.includes('Coral Bay General')&&t.includes('heat cleared')&&!t.includes('job is blown')),'consequence states the hospital release, no blown job');
+ console.log('B38-T3 Wasted screen: treated headline, hospital line, real bill, stats and consequence from driven state: PASS');
 }

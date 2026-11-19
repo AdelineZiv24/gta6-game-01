@@ -31,6 +31,12 @@ export function drawSpikes(ctx, police, time) {
   ctx.save();
   ctx.translate(strip.x, strip.y);
   ctx.rotate(Math.atan2(strip.dirY, strip.dirX));
+  const seg = (strip.half * 2) / 8;
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = i % 2 ? '#20262b' : '#ffd37b';
+    ctx.fillRect(-12, -strip.half + i * seg, 4, seg);
+    ctx.fillRect(8, -strip.half + i * seg, 4, seg);
+  }
   ctx.fillStyle = '#20262b';
   ctx.fillRect(-8, -strip.half, 16, strip.half * 2);
   ctx.fillStyle = '#39434b';
@@ -38,13 +44,23 @@ export function drawSpikes(ctx, police, time) {
   const glint = Math.floor(time / 300) % 2;
   for (let i = 0; i < 9; i++) {
     const y = -strip.half + 4 + i * (strip.half * 2 - 8) / 8;
-    ctx.fillStyle = (i + glint) % 2 ? '#eef6f8' : '#aebfc4';
-    ctx.beginPath(); ctx.arc(0, y, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = (i + glint) % 2 ? '#ffffff' : '#cfe3e8';
+    ctx.beginPath(); ctx.arc(0, y, 3, 0, Math.PI * 2); ctx.fill();
   }
   ctx.strokeStyle = '#ffd37b'; ctx.lineWidth = 1.6;
   for (let i = 0; i < 9; i++) {
     const y = -strip.half + 4 + i * (strip.half * 2 - 8) / 8;
     ctx.beginPath(); ctx.moveTo(-5, y - 3); ctx.lineTo(1, y); ctx.lineTo(-5, y + 3); ctx.stroke();
+  }
+  for (const s of [-1, 1]) {
+    const cy = s * (strip.half + 12);
+    ctx.fillStyle = '#20262b'; ctx.fillRect(-6, cy - 6, 12, 12);
+    ctx.fillStyle = '#e8762d';
+    ctx.beginPath(); ctx.arc(0, cy, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff3dc';
+    ctx.beginPath(); ctx.arc(0, cy, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8762d';
+    ctx.beginPath(); ctx.arc(0, cy, 1.7, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }

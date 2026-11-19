@@ -21,11 +21,19 @@ export const BAY_TRACKS = [
   { title: 'Night Swim', artist: 'Paloma Drive' },
   { title: 'Low Beam Serenade', artist: 'The Breakwater Club' },
 ];
-export const RADIO_STATIONS = [{name:RADIO_STATION,tracks:RADIO_TRACKS},{name:BAY_STATION,tracks:BAY_TRACKS}];
+export const TALK_STATION = 'BAY TALK 90.7';
+export const TALK_TRACKS = [
+  { title: 'The Morning Tide Report', artist: 'Dana Reyes' },
+  { title: 'Harbour Traffic and Ferry Times', artist: 'The Bay Newsroom' },
+  { title: 'Night Line — Callers After Dark', artist: 'Marco Vale' },
+  { title: 'Regatta Weather Watch', artist: 'Ines Duarte' },
+  { title: 'Pier Pressure — The Fishing Phone-In', artist: 'Old Man Herrera' },
+];
+export const RADIO_STATIONS = [{name:RADIO_STATION,freq:'98.1',tracks:RADIO_TRACKS},{name:BAY_STATION,freq:'101.3',tracks:BAY_TRACKS},{name:TALK_STATION,freq:'90.7',tracks:TALK_TRACKS}];
 export function stationNow(seconds, stationIndex){
   const station=RADIO_STATIONS[stationIndex]||RADIO_STATIONS[0];
   const index=Math.floor(seconds/24)%station.tracks.length;const {title,artist}=station.tracks[index];
   return {station:station.name,title,artist,index};
 }
 export function createRadio(){return {station:0};}
-export function cycleRadio(radio){radio.station=(radio.station+1)%3;return radio.station;}
+export function cycleRadio(radio){radio.station=(radio.station+1)%4;return radio.station;}

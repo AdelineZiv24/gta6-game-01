@@ -24,3 +24,9 @@ export function drawRain(ctx, game, time) {
   ctx.stroke();
   ctx.restore();
 }
+
+export function rainIntensity(seconds) {
+  const t = ((seconds % WEATHER_PERIOD) + WEATHER_PERIOD) % WEATHER_PERIOD;
+  if (t < WEATHER_RAIN_START) return 0;
+  return Math.min(1, (t - WEATHER_RAIN_START) / 8, (WEATHER_PERIOD - t) / 8);
+}

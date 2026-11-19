@@ -1,8 +1,7 @@
-import { WORLD, FONT } from './config.js';
+import { FONT } from './config.js';
+import { drawMinimap, minimapRadius } from './minimap.js';
 import { repProgress } from './rep.js';
 import { stationNow } from './radio.js';
-import { gasStations } from './fuel.js';
-import { sprayGarages } from './spray.js';
 import { weatherLabel } from './weather.js';
 
 export function responseRows(game) {
@@ -82,7 +81,22 @@ export function drawHUD(ctx, game) {
     if(objective.position){const dx=objective.position.x-player.x,dy=objective.position.y-player.y,distance=Math.hypot(dx,dy);ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText(`${Math.round(distance)} m`,w/2,top+59);}
     if(objective.position){const dx=objective.position.x-player.x,dy=objective.position.y-player.y,a=Math.atan2(dy,dx),edgeX=w/2+Math.cos(a)*Math.min(w*.38,380),edgeY=h/2+Math.sin(a)*Math.min(h*.32,255);ctx.save();ctx.translate(edgeX,edgeY);ctx.rotate(a);ctx.fillStyle='#ffe16d';ctx.strokeStyle='#173d46';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(15,0);ctx.lineTo(-10,-10);ctx.lineTo(-6,0);ctx.lineTo(-10,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
   }
-  if(game.missions?.dialogue){const d=game.missions.dialogue,line=d.lines[d.index]||'';const bw=Math.min(620,w-40),words=line.split(' '),lines=[];let row='';ctx.font=`14px ${FONT}`;for(const word of words){if(row&&ctx.measureText(row+' '+word).width>bw-108){lines.push(row);row=word;}else row+=(row?' ':'')+word;}if(row)lines.push(row);const bh=70+lines.length*20,x=(w-bw)/2,y=h-bh-252;ctx.fillStyle='#103c48f2';ctx.beginPath();ctx.roundRect(x,y,bw,bh,8);ctx.fill();drawPortrait(ctx,d.speaker,x+14,y+14);ctx.fillStyle='#f9d777';ctx.textAlign='left';ctx.font=`bold 14px ${FONT}`;ctx.fillText(d.speaker,x+88,y+24);ctx.fillStyle='#fff3dc';ctx.font=`14px ${FONT}`;lines.forEach((text,i)=>ctx.fillText(text,x+88,y+50+i*20));ctx.textAlign='right';ctx.font=`10px ${FONT}`;ctx.fillText('E / CLICK',x+bw-18,y+bh-18);}
+  const news = game.news;
+  if (news?.banner) {
+    const banner = news.banner, bw2 = Math.min(680, w - 40), left = (w - bw2) / 2;
+    const baseY = objective?.text ? (w < 1000 ? 122 : 22) + 74 : 22;
+    const slide = Math.min(1, banner.t / .3), by = baseY - 46 * (1 - slide);
+    const fade = banner.t > banner.dur - .5 ? Math.max(0, (banner.dur - banner.t) / .5) : 1;
+    ctx.save(); ctx.globalAlpha = fade;
+    panel(left, by, bw2, 42);
+    ctx.fillStyle = '#c0272d'; ctx.beginPath(); ctx.roundRect(left + 6, by + 6, 108, 30, 6); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = `bold 14px ${FONT}`; ctx.fillText('BREAKING', left + 60, by + 21);
+    ctx.textAlign = 'left'; ctx.fillStyle = '#f9d777'; ctx.font = `bold 9px ${FONT}`; ctx.fillText('CORAL BAY NEWS', left + 126, by + 13);
+    ctx.fillStyle = '#fff3dc'; ctx.font = `bold 16px ${FONT}`; ctx.fillText(banner.headline, left + 126, by + 30, bw2 - 138);
+    ctx.restore();
+  }
+  let dialogueTop=0;
+  if(game.missions?.dialogue){const d=game.missions.dialogue,line=d.lines[d.index]||'';const bw=Math.min(620,w-40),words=line.split(' '),lines=[];let row='';ctx.font=`14px ${FONT}`;for(const word of words){if(row&&ctx.measureText(row+' '+word).width>bw-108){lines.push(row);row=word;}else row+=(row?' ':'')+word;}if(row)lines.push(row);const bh=70+lines.length*20,x=(w-bw)/2,y=h-bh-252;dialogueTop=y;ctx.fillStyle='#103c48f2';ctx.beginPath();ctx.roundRect(x,y,bw,bh,8);ctx.fill();drawPortrait(ctx,d.speaker,x+14,y+14);ctx.fillStyle='#f9d777';ctx.textAlign='left';ctx.font=`bold 14px ${FONT}`;ctx.fillText(d.speaker,x+88,y+24);ctx.fillStyle='#fff3dc';ctx.font=`14px ${FONT}`;lines.forEach((text,i)=>ctx.fillText(text,x+88,y+50+i*20));ctx.textAlign='right';ctx.font=`10px ${FONT}`;ctx.fillText('E / CLICK',x+bw-18,y+bh-18);}
   if(game.missions?.retry){ctx.textAlign='center';ctx.fillStyle='#ffe39a';ctx.font=`bold 14px ${FONT}`;ctx.fillText('MISSION FAILED · RETURN TO THE DINER · E TO RETRY',w/2,h*.56);}
   if(game.missions?.currentMission<6&&!game.missions.activity&&!game.missions.retry&&game.missions?.objective?.includes('Meet Lena')){ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`11px ${FONT}`;ctx.fillText('E · TALK',w/2,h*.61);}
   if(game.missions&&!game.missions.activity&&!game.missions.retry){const p=game.player;if(Math.hypot(p.x-game.world.spawnPoints.diner.x,p.y-game.world.spawnPoints.diner.y)<75){ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`bold 12px ${FONT}`;ctx.fillText(game.missions.currentMission<6?'E · TALK TO LENA':'1 · TAXI · 2 · ARMOUR · 3 · REPLAY',w/2,h*.64);}}
@@ -95,34 +109,7 @@ export function drawHUD(ctx, game) {
     panel(sx,sy,sw,108);ctx.textAlign='center';ctx.fillStyle='#f9d777';ctx.font=`bold 12px ${FONT}`;ctx.fillText(splash.header||'MISSION COMPLETE',center,sy+22);ctx.fillStyle='#fff3dc';ctx.font=`bold 25px ${FONT}`;ctx.fillText(splash.name.toUpperCase(),center,sy+50);ctx.fillStyle='#8df0a5';ctx.font=`bold 20px ${FONT}`;ctx.fillText(splash.reward>0?`+$${splash.reward.toLocaleString('en-US')}`:splash.repLevel?`STREET REP · LV ${splash.repLevel}`:'+$0',center,sy+78);ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText(`TOTAL $${splash.total.toLocaleString('en-US')}`,center,sy+97);
   }
   if(game.notice&&game.playSeconds<(game.noticeUntil||0)){const noticeWidth=Math.min(360,w-40);ctx.fillStyle='#103c48e8';ctx.beginPath();ctx.roundRect((w-noticeWidth)/2,h*.68,noticeWidth,42,8);ctx.fill();ctx.textAlign='center';ctx.fillStyle='#fff3dc';ctx.font=`bold 13px ${FONT}`;ctx.fillText(game.notice,w/2,h*.68+21,noticeWidth-24);}
-  const radius=Math.min(84,w*0.19,h*0.2), cx=24+radius,cy=h-24-radius, scale=.145;
-  ctx.save();ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.clip();ctx.fillStyle='#72a879';ctx.fillRect(cx-radius,cy-radius,radius*2,radius*2);
-  ctx.drawImage(minimap,cx-player.x*scale,cy-player.y*scale,WORLD.width*scale,WORLD.height*scale);
-  if (objective?.position) {
-    let dx=(objective.position.x-player.x)*scale,dy=(objective.position.y-player.y)*scale;
-    const d=Math.hypot(dx,dy),limit=radius-12;if(d>limit){dx*=limit/d;dy*=limit/d;}
-    ctx.fillStyle='#fa6d55';ctx.strokeStyle='#fff4d8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx+dx,cy+dy-8);ctx.lineTo(cx+dx+7,cy+dy);ctx.lineTo(cx+dx,cy+dy+8);ctx.lineTo(cx+dx-7,cy+dy);ctx.closePath();ctx.fill();ctx.stroke();
-  }
-  for(const unit of game.police?.units||[]){const dx=(unit.car.x-player.x)*scale,dy=(unit.car.y-player.y)*scale;ctx.fillStyle='#56c9e5';ctx.strokeStyle='#123d5b';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),4,0,Math.PI*2);ctx.fill();ctx.stroke();}
-  const heli=game.police?.heli;
-  if(heli){
-    const dx=(heli.x-player.x)*scale,dy=(heli.y-player.y)*scale,limit=radius-8;
-    const blipX=cx+Math.max(-limit,Math.min(limit,dx)),blipY=cy+Math.max(-limit,Math.min(limit,dy));
-    ctx.fillStyle='#eafcff';ctx.strokeStyle='#0e5a74';ctx.lineWidth=2;
-    ctx.beginPath();ctx.arc(blipX,blipY,6,0,Math.PI*2);ctx.fill();ctx.stroke();
-    ctx.strokeStyle='rgba(234,252,255,0.7)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.arc(blipX,blipY,9,0,Math.PI*2);ctx.stroke();
-  }
-  if(game.world)for(const station of gasStations(game.world)){
-    const dx=(station.x-player.x)*scale,dy=(station.y-player.y)*scale;
-    ctx.fillStyle='#f9a03f';ctx.strokeStyle='#173d46';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),3.5,0,Math.PI*2);ctx.fill();ctx.stroke();
-  }
-  if(game.world)for(const garage of sprayGarages(game.world)){
-    const dx=(garage.x-player.x)*scale,dy=(garage.y-player.y)*scale;
-    ctx.fillStyle='#2fd4c4';ctx.strokeStyle='#173d46';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx+Math.max(-radius+8,Math.min(radius-8,dx)),cy+Math.max(-radius+8,Math.min(radius-8,dy)),3.5,0,Math.PI*2);ctx.fill();ctx.stroke();
-  }
-  ctx.translate(cx,cy);ctx.rotate(player.facing);if(game.vehicle){ctx.fillStyle=game.vehicle.color;ctx.fillRect(-10,-5,20,10);ctx.fillStyle='#173c49';ctx.fillRect(-3,-4,7,8);}else {ctx.fillStyle='#fff9e6';ctx.strokeStyle='#17424b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(-7,7);ctx.lineTo(-3,0);ctx.lineTo(-7,-7);ctx.closePath();ctx.fill();ctx.stroke();}ctx.restore();
-  ctx.strokeStyle='#fff1d9';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();ctx.textAlign='center';ctx.fillStyle='#163e47';ctx.font=`bold 11px ${FONT}`;ctx.fillText('N',cx,cy-radius+13);
+  drawMinimap(ctx, game, w, h);
   if(game.vehicle){panel(w-234,h-116,214,92);ctx.textAlign='right';ctx.fillStyle='#fff3dc';ctx.font=`bold 13px ${FONT}`;ctx.fillText(game.vehicle.model.name,w-34,h-99);ctx.fillStyle='#f9d777';ctx.font=`bold 40px ${FONT}`;ctx.fillText(`${Math.round(Math.abs(game.vehicle.speed)*.32)} km/h`,w-34,h-68);ctx.font=`11px ${FONT}`;ctx.fillStyle=game.vehicle.health<30?'#ef826c':'#fff3dc';ctx.fillText(`COND ${Math.max(0,Math.round(game.vehicle.health))}%`,w-34,h-40);
     const fuel=Math.max(0,Math.min(100,game.vehicle.fuel??100));ctx.textAlign='left';ctx.font=`bold 9px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText('FUEL',w-218,h-40);ctx.fillStyle='#ffffff28';ctx.fillRect(w-218,h-31,184,6);ctx.fillStyle=fuel<25?'#ef826c':'#8df0a5';ctx.fillRect(w-218,h-31,184*fuel/100,6);ctx.textAlign='right';
   }
@@ -163,21 +150,34 @@ export function drawHUD(ctx, game) {
     panel(w-230,top,210,72);ctx.textAlign='right';ctx.fillStyle='#fff3dc';ctx.font=`bold 15px ${FONT}`;ctx.fillText(combat.weapon==='pistol'?'PISTOL':'FISTS',w-34,top+21);
     ctx.font=`13px ${FONT}`;ctx.fillStyle='#f9d777';ctx.fillText(combat.weapon==='pistol'?(combat.reload>0?'RELOADING…':`${combat.ammo} / ${combat.reserve}   •   R RELOAD`):'CLICK / F  SWING',w-34,top+47);
   }
-  if(game.vehicle){
+  {
     const mode=game.radio?.station??0;
-    panel(w/2-255,h-272,510,30);ctx.textAlign='center';ctx.font=`12px ${FONT}`;ctx.fillStyle='#fff3dc';
-    if(mode>=2)ctx.fillText('♪ RADIO OFF',w/2,h-257,486);
-    else{const {station,title,artist}=stationNow(game.playSeconds,mode);ctx.fillText(`♪ ${station} · "${title}" — ${artist}`,w/2,h-257,486);}
+    const radioY=dialogueTop?((news?.banner||w<1000)?dialogueTop-38:(objective?.text?96:22)):h-272;
+    panel(w/2-255,radioY,510,30);ctx.textAlign='center';ctx.font=`12px ${FONT}`;ctx.fillStyle='#fff3dc';
+    if(news?.ticker){ctx.fillStyle='#ff9d8d';ctx.fillText(`NEWS FLASH — ${news.ticker.headline}`,w/2,radioY+15,486);}
+    else if(mode>=3)ctx.fillText('♪ RADIO OFF',w/2,radioY+15,486);
+    else{const {station,title,artist}=stationNow(game.playSeconds,mode);ctx.fillText(`♪ ${station} · "${title}" — ${artist}`,w/2,radioY+15,486);}
   }
   const message=game.entering?'Working the door…':game.noticeUntil>game.playSeconds?game.notice:game.vehicle?'W / S  Accelerate / Brake • A / D  Steer • Space  Handbrake • E  Exit • T  Radio • C  Horn':'E  Enter car • RMB Aim • Click / F Attack • 1 Fists / 2 Pistol';
   panel(Math.max(inset,w/2-255),h-236,Math.min(510,w-2*inset),34);ctx.textAlign='center';ctx.font=`12px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText(message,w/2,h-219,Math.min(490,w-60));
   ctx.globalAlpha=1;const opacity=Math.max(0,Math.min(1,(12-game.playSeconds)/3));
-  if(opacity>0&&!game.missions?.dialogue&&w>1000){ctx.globalAlpha=opacity;panel(cx+radius+18,h-68,Math.min(360,w-cx-radius-38),44);ctx.textAlign='left';ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText('WASD / Arrows  Move   •   Shift  Sprint   •   P  Pause',cx+radius+30,h-46,Math.max(0,w-cx-radius-62));}
+  if(opacity>0&&!game.missions?.dialogue&&w>1000){ctx.globalAlpha=opacity;panel((24+minimapRadius(w,h)*2)+18,h-68,Math.min(360,w-(24+minimapRadius(w,h)*2)-38),44);ctx.textAlign='left';ctx.fillStyle='#fff3dc';ctx.font=`12px ${FONT}`;ctx.fillText('WASD / Arrows  Move   •   Shift  Sprint   •   P  Pause',(24+minimapRadius(w,h)*2)+30,h-46,Math.max(0,w-(24+minimapRadius(w,h)*2)-62));}
   const popup=game.vehicleEffects?.popup;
   if(popup&&game.vehicleEffects.time<popup.until){ctx.save();ctx.globalAlpha=Math.min(1,(popup.until-game.vehicleEffects.time)/.3);ctx.textAlign='center';ctx.font=`bold 30px ${FONT}`;ctx.fillStyle='#ffe16d';ctx.strokeStyle='#173d46';ctx.lineWidth=5;ctx.strokeText(popup.text,w/2,h*.30);ctx.fillText(popup.text,w/2,h*.30);ctx.restore();}
   const drift=game.drift;
   if(drift&&drift.chain>0&&game.vehicle){ctx.save();ctx.textAlign='center';ctx.font=`bold 22px ${FONT}`;ctx.fillStyle='#7be3f0';ctx.strokeStyle='#173d46';ctx.lineWidth=4;ctx.strokeText(`DRIFT ×${drift.chain}`,w/2,h*.30+44);ctx.fillText(`DRIFT ×${drift.chain}`,w/2,h*.30+44);ctx.restore();}
   if(combat?.flash>0){ctx.fillStyle=`rgba(232,65,55,${combat.flash*.65})`;ctx.fillRect(0,0,w,h);}
-  if(game.outcome){ctx.fillStyle='#092731df';ctx.fillRect(0,0,w,h);ctx.textAlign='center';ctx.fillStyle=game.outcome.kind==='busted'?'#71d3d9':'#ef826c';ctx.font=`900 64px ${FONT}`;ctx.fillText(game.outcome.kind.toUpperCase(),w/2,h/2-50);ctx.fillStyle='#fff3dc';ctx.font=`18px ${FONT}`;ctx.fillText(`${game.outcome.kind==='busted'?'Police fine':'Hospital bill'}: $${game.outcome.bill}`,w/2,h/2+12);ctx.font=`14px ${FONT}`;ctx.fillText('Press any key to continue',w/2,h/2+58);}
+  if(game.outcome){
+    const o=game.outcome,busted=o.kind==='busted',cx=w/2,cy=h/2;
+    const stars=o.stars??game.wanted?.stars??0,cash=o.cash??game.player.cash,repLevel=o.repLevel??repProgress(game.rep?.xp??0).level,jobs=o.jobs??game.missions?.completed?.length??0,blown=o.missionBlown??false;
+    ctx.fillStyle='#092731df';ctx.fillRect(0,0,w,h);ctx.textAlign='center';
+    ctx.font=`900 84px ${FONT}`;ctx.fillStyle='#fff3dc';ctx.fillText(o.kind.toUpperCase(),cx+5,cy-59);
+    ctx.strokeStyle='#173d46';ctx.lineWidth=8;ctx.strokeText(o.kind.toUpperCase(),cx,cy-64);ctx.fillStyle=busted?'#71d3d9':'#ef826c';ctx.fillText(o.kind.toUpperCase(),cx,cy-64);
+    ctx.fillStyle='#fff3dc';ctx.font=`bold 16px ${FONT}`;ctx.fillText(busted?'Booked by the Coral Bay PD — they keep the fine, you keep the story.':'Coral Bay General patches you up and bills you for the trouble.',cx,cy+4);
+    ctx.font=`18px ${FONT}`;ctx.fillText(`${busted?'Police fine':'Hospital bill'}: $${o.bill}`,cx,cy+40);
+    ctx.fillStyle='#71d3d9';ctx.font=`bold 15px ${FONT}`;ctx.fillText(`CASH $${cash.toLocaleString('en-US')} · STREET REP LV ${repLevel} · JOBS ${jobs}/6${stars>0?` · WANTED ${'★'.repeat(stars)}`:''}`,cx,cy+72);
+    ctx.fillStyle='#fff3dc';ctx.font=`14px ${FONT}`;ctx.fillText(`${busted?'You walk out of the police station':'You wake up outside Coral Bay General'} — heat cleared, car left where it dropped.${blown?' The job is blown; Lena waits at the diner.':''}`,cx,cy+102);
+    ctx.fillText('Press any key to continue',cx,cy+146);
+  }
   ctx.restore();
 }
